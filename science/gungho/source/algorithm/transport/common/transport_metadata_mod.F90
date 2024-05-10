@@ -32,7 +32,7 @@ module transport_metadata_mod
     real(kind=r_tran)      :: min_value          ! the min value to be enforced
     logical(kind=l_def)    :: log_space ! Do interpolation in log space
     logical(kind=l_def)    :: reversible ! Use a reversible transport scheme
-    integer(kind=i_def)    :: consistent_ffsl_splitting ! Which FFSL splitting to use
+    integer(kind=i_def)    :: ffsl_splitting ! Which FFSL splitting to use
 
     contains
 
@@ -51,7 +51,7 @@ module transport_metadata_mod
     procedure, public :: get_vertical_monotone_order
     procedure, public :: get_monotone_order
     procedure, public :: get_reversible
-    procedure, public :: get_consistent_ffsl_splitting
+    procedure, public :: get_ffsl_splitting
 
   end type transport_metadata_type
 
@@ -75,7 +75,7 @@ contains
                                             min_value,                       &
                                             log_space,                       &
                                             reversible,                      &
-                                            consistent_ffsl_splitting)       &
+                                            ffsl_splitting)                  &
                                             result(self)
 
     implicit none
@@ -95,7 +95,7 @@ contains
     real(kind=r_tran),      intent(in) :: min_value
     logical(kind=l_def),    intent(in) :: log_space
     logical(kind=l_def),    intent(in) :: reversible
-    integer(kind=i_def),    intent(in) :: consistent_ffsl_splitting
+    integer(kind=i_def),    intent(in) :: ffsl_splitting
 
     self%fname                   = trim(fname)
     self%equation_form           = equation_form
@@ -110,7 +110,7 @@ contains
     self%min_value               = min_value
     self%log_space               = log_space
     self%reversible              = reversible
-    self%consistent_ffsl_splitting = consistent_ffsl_splitting
+    self%ffsl_splitting = ffsl_splitting
 
   end function transport_metadata_constructor
 
@@ -333,15 +333,15 @@ contains
   !> @brief Get the splitting to use for consistent FFSL tracer transport
   !> @param[in] self     The transport_metadata object
   !> @return             The splitting
-  function get_consistent_ffsl_splitting(self) result(consistent_ffsl_splitting)
+  function get_ffsl_splitting(self) result(ffsl_splitting)
 
     implicit none
 
     class(transport_metadata_type), intent(in) :: self
-    integer(kind=i_def)                        :: consistent_ffsl_splitting
+    integer(kind=i_def)                        :: ffsl_splitting
 
-    consistent_ffsl_splitting = self%consistent_ffsl_splitting
+    ffsl_splitting = self%ffsl_splitting
 
-  end function get_consistent_ffsl_splitting
+  end function get_ffsl_splitting
 
 end module transport_metadata_mod

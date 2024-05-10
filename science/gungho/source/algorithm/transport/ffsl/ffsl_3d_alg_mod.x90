@@ -23,12 +23,13 @@ module ffsl_3d_alg_mod
   use timer_mod,                        only: timer
   use transport_enumerated_types_mod,   only: equation_form_advective,    &
                                               equation_form_conservative, &
-                                              equation_form_consistent
+                                              equation_form_consistent,   &
+                                              ffsl_splitting_cosmic
   use transport_metadata_mod,           only: transport_metadata_type
 
   ! Algorithms
-  use ffsl_hori_alg_mod,                only: ffsl_hori_first_alg, &
-                                              ffsl_hori_final_alg
+  use ffsl_hori_alg_mod,                only: ffsl_hori_cosmic_inner_alg, &
+                                              ffsl_hori_outer_alg
   use ffsl_vert_alg_mod,                only: ffsl_vert_transport_alg
 
   ! Kernels
@@ -131,6 +132,14 @@ contains
     ! Get pre-computed objects and set pointers --------------------------------
     mesh => field_n%get_mesh()
 
+    if (transport_metadata%get_ffsl_splitting() /= ffsl_splitting_cosmic) then
+      call log_event('3D FFSL only implemented for COSMIC splitting', LOG_LEVEL_ERROR)
+    end if
+
+    if (transport_metadata%get_equation_form() == equation_form_consistent) then
+      call log_event('3D FFSL not implemented for consistent equation', LOG_LEVEL_ERROR)
+    end if
+
     ! Function spaces
     field_fs => field_n%get_function_space()
     w2_fs => function_space_collection%get_fs( mesh, element_order, W2 )
@@ -188,8 +197,8 @@ contains
     call field_h%initialise( vector_space = field_fs )
 
     ! 1st advective step -------------------------------------------------------
-    call ffsl_hori_first_alg( half_increment_x, half_increment_y, field_n,     &
-                              step_dt, transport_metadata )
+    call ffsl_hori_cosmic_inner_alg( half_increment_x, half_increment_y,       &
+                                     field_n, step_dt, transport_metadata )
     call ffsl_vert_transport_alg( flux_z, half_increment_z, dummy_np1,         &
                                   field_n, step_dt, transport_metadata,        &
                                   inner_order, compute_adv_inc=.true.,         &
@@ -200,13 +209,13 @@ contains
                  X_minus_bY(field_z, field_n, third_dt, half_increment_z) )
 
     ! 2nd advective step -------------------------------------------------------
-    call ffsl_hori_final_alg( flux,                                            &
+    call ffsl_hori_outer_alg( flux,                                            &
                               half_increment_xy, half_increment_yx,            &
                               dummy_np1, field_n, field_x, field_y, step_dt,   &
                               transport_metadata, outer_order,                 &
                               compute_adv_inc=.true., compute_field_np1=.false.)
-    call ffsl_hori_first_alg( half_increment_xz, half_increment_yz, field_z,   &
-                              step_dt, transport_metadata )
+    call ffsl_hori_cosmic_inner_alg( half_increment_xz, half_increment_yz,     &
+                                     field_z, step_dt, transport_metadata )
 
     call ffsl_vert_transport_alg( flux_z, half_increment_zx, dummy_np1,        &
                                   field_x, step_dt, transport_metadata,        &
@@ -227,7 +236,7 @@ contains
     ! Final step (advective or conservative) -----------------------------------
     compute_adv_inc = (transport_metadata%get_equation_form() == equation_form_advective)
 
-    call ffsl_hori_final_alg( flux, increment_x, increment_y,                  &
+    call ffsl_hori_outer_alg( flux, increment_x, increment_y,                  &
                               dummy_np1, field_n, field_g, field_f, step_dt,   &
                               transport_metadata, outer_order,                 &
                               compute_adv_inc=compute_adv_inc,                 &
@@ -239,7 +248,7 @@ contains
 
     ! Bring together final fluxes or increments --------------------------------
     select case ( transport_metadata%get_equation_form() )
-    case ( equation_form_conservative, equation_form_consistent )
+    case ( equation_form_conservative )
       call mass_flux%initialise( vector_space = w2_fs )
       call mass_flux_h%initialise( vector_space = w2h_fs )
       face_selector_ew => get_face_selector_ew(mesh%get_id())

@@ -68,7 +68,7 @@ contains
                                             horizontal_monotone,     &
                                             vertical_monotone,       &
                                             vertical_monotone_order, &
-                                            consistent_ffsl_splitting
+                                            ffsl_splitting
 
     implicit none
 
@@ -111,7 +111,7 @@ contains
                                                     real(min_value(config), r_tran), &
                                                     log_space(config),               &
                                                     reversible(config),              &
-                                                    consistent_ffsl_splitting(config) )
+                                                    ffsl_splitting(config) )
 
       call transport_metadata_collection%set_transport_metadata(transport_metadata)
 

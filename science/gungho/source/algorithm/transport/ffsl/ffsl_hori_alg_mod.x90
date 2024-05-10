@@ -34,7 +34,7 @@ module ffsl_hori_alg_mod
                                               direction_h,                &
                                               splitting_strang_hvh,       &
                                               horizontal_monotone_none,   &
-                                              consistent_ffsl_splitting_swift
+                                              ffsl_splitting_swift
   use transport_metadata_mod,           only: transport_metadata_type
   use transport_runtime_alg_mod,        only: transport_runtime_type
   use transport_runtime_collection_mod, only: get_transport_runtime
@@ -66,9 +66,9 @@ module ffsl_hori_alg_mod
   private
 
   public  :: ffsl_hori_splitting_alg
-  public  :: ffsl_hori_first_alg
-  public  :: ffsl_hori_final_alg
-  public  :: consistent_ffsl_hori_first_alg
+  public  :: ffsl_hori_cosmic_inner_alg
+  public  :: ffsl_hori_outer_alg
+  public  :: ffsl_hori_swift_inner_alg
   private :: ffsl_extra_points
 
 contains
@@ -102,18 +102,21 @@ contains
     ! Arguments ----------------------------------------------------------------
     type(r_tran_field_type),         intent(inout) :: mass_flux
     type(r_tran_field_type),         intent(inout) :: field_np1
-    type(r_tran_field_type),         intent(in)    :: field_n
+    type(r_tran_field_type), target, intent(in)    :: field_n
     real(kind=r_tran),               intent(in)    :: step_dt
     type(transport_metadata_type),   intent(in)    :: transport_metadata
     logical(kind=l_def), optional,   intent(in)    :: compute_field_np1
 
     ! Internal variables -------------------------------------------------------
     ! Pointers to existing objects
-    type(mesh_type),           pointer :: mesh => null()
+    type(mesh_type),              pointer :: mesh
+    type(r_tran_field_type),      pointer :: rho_d_n
+    type(r_tran_field_type),      pointer :: detj_at_w3
+    type(transport_runtime_type), pointer :: transport_runtime
 
     ! Function spaces
-    type(function_space_type), pointer :: field_fs => null()
-    type(function_space_type), pointer :: w2h_fs => null()
+    type(function_space_type), pointer :: field_fs
+    type(function_space_type), pointer :: w2h_fs
 
     ! Transport options
     logical(kind=l_def) :: to_compute_field_np1
@@ -132,10 +135,14 @@ contains
     type(r_tran_field_type) :: increment_y
     type(r_tran_field_type) :: flux
     type(r_tran_field_type) :: flux_first
+    type(r_tran_field_type) :: conservative_field_x
+    type(r_tran_field_type) :: conservative_field_y
 
     ! Useful constants
     real(kind=r_tran)   :: half_dt
     logical(kind=l_def) :: swift_splitting
+    integer(kind=i_def) :: step
+    logical(kind=l_def) :: is_dry_field
 
     if ( subroutine_timers ) call timer(routine_name)
 
@@ -152,8 +159,9 @@ contains
       to_compute_field_np1 = .true.
     end if
 
-    swift_splitting = (transport_metadata%get_consistent_ffsl_splitting() == &
-                       consistent_ffsl_splitting_swift)
+    swift_splitting = (transport_metadata%get_ffsl_splitting() == &
+                       ffsl_splitting_swift)
+    is_dry_field = ( trim(transport_metadata%get_name()) == trim(dry_field_name) )
 
     ! Initialise fields used by all splitting options --------------------------
     call field_x%initialise( vector_space = field_fs )
@@ -183,21 +191,18 @@ contains
     !                          + G(field,rho_flux) + G(field_y,rho_flux) ] )
 
     ! 1st advective step -------------------------------------------------------
-    if (transport_metadata%get_equation_form() == equation_form_consistent     &
-        .and. swift_splitting) then
-      call consistent_ffsl_hori_first_alg(flux_first,                          &
-                                          field_x, field_y, field_n,           &
-                                          step_dt, transport_metadata,         &
-                                          outer_order)
+    if ( swift_splitting ) then
+      call ffsl_hori_swift_inner_alg(flux_first, field_x, field_y, field_n,    &
+                                     step_dt, transport_metadata, outer_order)
     else
-      call ffsl_hori_first_alg( first_increment_x, first_increment_y, field_n, &
-                                step_dt, transport_metadata )
+      call ffsl_hori_cosmic_inner_alg( first_increment_x, first_increment_y,   &
+                                       field_n, step_dt, transport_metadata )
       call invoke( X_minus_bY(field_x, field_n, half_dt, first_increment_x),   &
                    X_minus_bY(field_y, field_n, half_dt, first_increment_y) )
     end if
 
     ! Final step (advective or conservative) -----------------------------------
-    call ffsl_hori_final_alg( flux, increment_x, increment_y,                  &
+    call ffsl_hori_outer_alg( flux, increment_x, increment_y,                  &
                               field_np1, field_n, field_x, field_y,            &
                               step_dt, transport_metadata, outer_order,        &
                               compute_adv_inc=.false.,                         &
@@ -206,10 +211,50 @@ contains
     ! Compute combined mass flux, if required ----------------------------------
     if (transport_metadata%get_equation_form() == equation_form_conservative   &
         .or. transport_metadata%get_equation_form() == equation_form_consistent) then
-      if (transport_metadata%get_equation_form() == equation_form_consistent   &
-          .and. swift_splitting) then
+      if ( swift_splitting ) then
         call invoke( aX_plus_bY(mass_flux, 0.5_r_tran, flux_first,             &
                                            0.5_r_tran, flux) )
+
+        ! @todo this section needs removing following lfric-apps:#32
+        ! Need to pause here to compute rho_d_ffsl that is stored for consistent transport
+        if ( is_dry_field .and. check_any_eqn_consistent() ) then
+          ! Compute stored FFSL density fields by adding increments the
+          ! previous conservative rho fields, and not the advective rho predictor
+          call conservative_field_x%initialise( vector_space = field_fs )
+          call conservative_field_y%initialise( vector_space = field_fs )
+          call increment_x%initialise( vector_space = field_fs )
+          call increment_y%initialise( vector_space = field_fs )
+
+          detj_at_w3 => get_detj_at_w3_r_tran(mesh%get_id())
+
+          call invoke( fv_divergence_x_kernel_type(increment_x, mass_flux,     &
+                                                   detj_at_w3),                &
+                       fv_divergence_y_kernel_type(increment_y, mass_flux,     &
+                                                   detj_at_w3) )
+
+          transport_runtime => get_transport_runtime(mesh)
+          step = transport_runtime%get_tracer_step_ctr()
+          if (step == 1) then
+            rho_d_n => field_n
+          else
+            rho_d_n => transport_runtime%get_rho_d(mesh%get_id(), step)
+          end if
+          call invoke( X_minus_bY(conservative_field_x, rho_d_n, step_dt,      &
+                                                              increment_x),    &
+                       X_minus_bY(conservative_field_y, rho_d_n, step_dt,      &
+                                                              increment_y) )
+
+          if ( limited_area .and. topology == topology_non_periodic ) then
+            call overwrite_blending_zone_rtran(conservative_field_x, rho_d_n, &
+                                                depth=transport_boundary_depth)
+            call overwrite_blending_zone_rtran(conservative_field_y, rho_d_n, &
+                                                depth=transport_boundary_depth)
+          end if
+
+          call transport_runtime%set_rho_d_ffsl_x(conservative_field_x, step)
+          call transport_runtime%set_rho_d_ffsl_y(conservative_field_y, step)
+        end if
+
       else
         call invoke( setval_X(mass_flux, flux) )
       end if
@@ -217,21 +262,20 @@ contains
 
     if ( subroutine_timers ) call timer(routine_name)
 
-    nullify( mesh, w2h_fs, field_fs )
-
   end subroutine ffsl_hori_splitting_alg
 
-  !> @brief Performs the first advective step of X and Y horizontal FFSL sweeps
+  !> @brief Performs the inner COSMIC advective step of horizontal FFSL sweeps
   !> @details Calculates the advective increment fields corresponding to X and Y
-  !           transport sweeps, from a single input field.
+  !!          transport sweeps, from a single input field. This is used for the
+  !!          inner step of the COSMIC splitting.
   !> @param[in,out] increment_x        Advective increment from x-sweep.
   !> @param[in,out] increment_y        Advective increment from y-sweep.
   !> @param[in]     field_n            Field at the start of the transport step
   !> @param[in]     dt                 The dt for this time step
   !> @param[in]     transport_metadata Contains the configuration options for
   !!                                   transporting this field
-  subroutine ffsl_hori_first_alg( increment_x, increment_y, field_n, &
-                                  dt, transport_metadata )
+  subroutine ffsl_hori_cosmic_inner_alg( increment_x, increment_y, field_n, &
+                                         dt, transport_metadata )
 
     ! Arguments ----------------------------------------------------------------
     type(r_tran_field_type),         intent(inout) :: increment_x
@@ -242,19 +286,19 @@ contains
 
     ! Internal variables -------------------------------------------------------
     ! Pointers to existing objects
-    type(transport_runtime_type), pointer :: transport_runtime => null()
-    type(mesh_type),              pointer :: mesh => null()
-    type(r_tran_field_type),      pointer :: dep_dist_xy => null()
-    type(r_tran_field_type),      pointer :: detj_at_w3 => null()
-    type(r_tran_field_type),      pointer :: detj_at_w3_copy => null()
-    type(field_type),             pointer :: panel_id_x => null()
-    type(field_type),             pointer :: panel_id_y => null()
-    type(integer_field_type),     pointer :: face_selector_ew => null()
-    type(integer_field_type),     pointer :: face_selector_ns => null()
-    type(r_tran_field_type),      pointer :: adv_one_x => null()
-    type(r_tran_field_type),      pointer :: adv_one_y => null()
-    type(r_tran_field_type),      pointer :: frac_wind_xy => null()
-    integer(kind=i_def),          pointer :: dep_stencil_extent_xy => null()
+    type(transport_runtime_type), pointer :: transport_runtime
+    type(mesh_type),              pointer :: mesh
+    type(r_tran_field_type),      pointer :: dep_dist_xy
+    type(r_tran_field_type),      pointer :: detj_at_w3
+    type(r_tran_field_type),      pointer :: detj_at_w3_copy
+    type(field_type),             pointer :: panel_id_x
+    type(field_type),             pointer :: panel_id_y
+    type(integer_field_type),     pointer :: face_selector_ew
+    type(integer_field_type),     pointer :: face_selector_ns
+    type(r_tran_field_type),      pointer :: adv_one_x
+    type(r_tran_field_type),      pointer :: adv_one_y
+    type(r_tran_field_type),      pointer :: frac_wind_xy
+    integer(kind=i_def),          pointer :: dep_stencil_extent_xy
 
     ! Fields and increments
     type(r_tran_field_type)         :: flux
@@ -262,12 +306,12 @@ contains
 
     ! Pointer to field, to avoid unnecessary setval calculation
     type(r_tran_field_type),   target  :: field_big_halo
-    type(r_tran_field_type),   pointer :: field_ptr_copy => null()
+    type(r_tran_field_type),   pointer :: field_ptr_copy
 
     ! Function spaces
-    type(function_space_type), pointer :: field_fs => null()
-    type(function_space_type), pointer :: w2h_fs => null()
-    type(function_space_type), pointer :: w2b_fs => null()
+    type(function_space_type), pointer :: field_fs
+    type(function_space_type), pointer :: w2h_fs
+    type(function_space_type), pointer :: w2b_fs
 
     ! Transport options
     integer(kind=i_def) :: monotone
@@ -291,21 +335,15 @@ contains
     strang = (transport_metadata%get_splitting() == splitting_strang_hvh)
 
     ! Get pre-computed fields
-    if (strang) then
-      adv_one_x => transport_runtime%get_adv_unity_half_x(mesh_id)
-      adv_one_y => transport_runtime%get_adv_unity_half_y(mesh_id)
-      frac_wind_xy => transport_runtime%get_frac_wind_xy_half(mesh_id)
-    else
-      adv_one_x => transport_runtime%get_adv_unity_x(mesh_id)
-      adv_one_y => transport_runtime%get_adv_unity_y(mesh_id)
-      frac_wind_xy => transport_runtime%get_frac_wind_xy(mesh_id)
-    end if
+    adv_one_x => transport_runtime%get_adv_unity_x(mesh_id, strang)
+    adv_one_y => transport_runtime%get_adv_unity_y(mesh_id, strang)
+    frac_wind_xy => transport_runtime%get_frac_wind_xy(mesh_id, strang, outer_step=.false.)
     detj_at_w3 => get_detj_at_w3_r_tran(mesh_id)
     detj_at_w3_copy => get_detj_at_w3_r_tran(mesh_id)
     panel_id_x => get_panel_id(mesh_id)
     panel_id_y => get_panel_id(mesh_id)
-    dep_dist_xy => transport_runtime%get_dep_dist_xy_w2(mesh_id, strang)
-    dep_stencil_extent_xy => transport_runtime%get_dep_stencil_extent_xy(mesh_id)
+    dep_dist_xy => transport_runtime%get_dep_dist_xy_w2(mesh_id, strang, outer_step=.false.)
+    dep_stencil_extent_xy => transport_runtime%get_dep_stencil_extent_xy(mesh_id, outer_step=.false.)
     face_selector_ew => get_face_selector_ew(mesh_id)
     face_selector_ns => get_face_selector_ns(mesh_id)
 
@@ -347,7 +385,7 @@ contains
     ! Compute the mass fluxes: -------------------------------------------------
     if (special_edges_treatment) then
       call invoke( setval_c(flux, 0.0_r_tran),                                  &
-                  ffsl_flux_xy_spt_kernel_type(                                 &
+                   ffsl_flux_xy_spt_kernel_type(                                &
                                             flux,                               &
                                             field_big_halo, stencil_extent_xy,  &
                                             detj_at_w3, stencil_extent_xy,      &
@@ -404,15 +442,10 @@ contains
 
     if ( subroutine_timers ) call timer('transport.ffsl_hori_update')
 
-    nullify(transport_runtime, mesh, detj_at_w3, detj_at_w3_copy,         &
-            panel_id_x, panel_id_y, adv_one_x, adv_one_y, field_ptr_copy, &
-            field_fs, dep_dist_xy, dep_stencil_extent_xy, w2h_fs, w2b_fs, &
-            face_selector_ew, face_selector_ns, frac_wind_xy)
-
-  end subroutine ffsl_hori_first_alg
+  end subroutine ffsl_hori_cosmic_inner_alg
 
 
-  !> @brief Performs the final horizontal steps of X and Y horizontal FFSL sweeps
+  !> @brief Performs the outer horizontal steps of X and Y horizontal FFSL sweeps
   !> @details Calculates the advective increment fields and/or updated fields
   !!          and/or mass fluxes from 1D X and Y horizontal FFSL sweeps, in
   !!          which the inputs to the sweeps are different fields.
@@ -434,7 +467,7 @@ contains
   !!                                   increments should be computed
   !> @param[in]     compute_field_np1  Optional argument as to whether advected
   !!                                   field should be computed
-  subroutine ffsl_hori_final_alg( flux, increment_x, increment_y,              &
+  subroutine ffsl_hori_outer_alg( flux, increment_x, increment_y,              &
                                   field_np1, field_n, field_x, field_y, dt,    &
                                   transport_metadata, order, compute_adv_inc,  &
                                   compute_field_np1 )
@@ -455,25 +488,27 @@ contains
 
     ! Internal variables -------------------------------------------------------
     ! Pointers to existing objects
-    type(transport_runtime_type), pointer :: transport_runtime => null()
-    type(mesh_type),              pointer :: mesh => null()
-    type(r_tran_field_type),      pointer :: dep_dist_xy => null()
-    type(r_tran_field_type),      pointer :: detj_at_w3 => null()
-    type(r_tran_field_type),      pointer :: detj_at_w3_copy => null()
-    type(field_type),             pointer :: panel_id_x => null()
-    type(field_type),             pointer :: panel_id_y => null()
-    type(r_tran_field_type),      pointer :: adv_one_x => null()
-    type(r_tran_field_type),      pointer :: adv_one_y => null()
-    type(r_tran_field_type),      pointer :: dry_mass_x => null()
-    type(r_tran_field_type),      pointer :: dry_mass_y => null()
-    type(r_tran_field_type),      pointer :: dry_mass_n => null()
-    type(r_tran_field_type),      pointer :: dry_mass_np1 => null()
-    type(r_tran_field_type),      pointer :: rho_d_n => null()
-    type(r_tran_field_type),      pointer :: rho_d_np1 => null()
-    type(r_tran_field_type),      pointer :: frac_flux_xy => null()
-    integer(kind=i_def),          pointer :: dep_stencil_extent_xy => null()
-    type(integer_field_type),     pointer :: face_selector_ew => null()
-    type(integer_field_type),     pointer :: face_selector_ns => null()
+    type(transport_runtime_type), pointer :: transport_runtime
+    type(mesh_type),              pointer :: mesh
+    type(r_tran_field_type),      pointer :: dep_dist_xy
+    type(r_tran_field_type),      pointer :: detj_at_w3
+    type(r_tran_field_type),      pointer :: detj_at_w3_copy
+    type(r_tran_field_type),      pointer :: adv_detj_x
+    type(r_tran_field_type),      pointer :: adv_detj_y
+    type(r_tran_field_type),      pointer :: adv_detj_xy
+    type(field_type),             pointer :: panel_id_x
+    type(field_type),             pointer :: panel_id_y
+    type(r_tran_field_type),      pointer :: adv_one_x
+    type(r_tran_field_type),      pointer :: adv_one_y
+    type(r_tran_field_type),      pointer :: dry_mass_x
+    type(r_tran_field_type),      pointer :: dry_mass_y
+    type(r_tran_field_type),      pointer :: dry_mass_np1
+    type(r_tran_field_type),      pointer :: rho_d_n
+    type(r_tran_field_type),      pointer :: rho_d_np1
+    type(r_tran_field_type),      pointer :: frac_flux_xy
+    integer(kind=i_def),          pointer :: dep_stencil_extent_xy
+    type(integer_field_type),     pointer :: face_selector_ew
+    type(integer_field_type),     pointer :: face_selector_ns
 
     ! Fields and increments
     type(r_tran_field_type), target :: remap_field_x
@@ -488,9 +523,9 @@ contains
     type(r_tran_field_type) :: increment
 
     ! Function spaces
-    type(function_space_type), pointer :: field_fs => null()
-    type(function_space_type), pointer :: w2h_fs => null()
-    type(function_space_type), pointer :: w2b_fs => null()
+    type(function_space_type), pointer :: field_fs
+    type(function_space_type), pointer :: w2h_fs
+    type(function_space_type), pointer :: w2b_fs
 
     ! Transport options
     integer(kind=i_def) :: monotone
@@ -520,8 +555,8 @@ contains
     monotone = transport_metadata%get_horizontal_monotone()
     strang = (transport_metadata%get_splitting() == splitting_strang_hvh)
     equation_form = transport_metadata%get_equation_form()
-    swift_splitting = (transport_metadata%get_consistent_ffsl_splitting() &
-                       == consistent_ffsl_splitting_swift)
+    swift_splitting = (transport_metadata%get_ffsl_splitting() &
+                       == ffsl_splitting_swift)
 
     ! Get pre-computed fields
     detj_at_w3 => get_detj_at_w3_r_tran(mesh_id)
@@ -530,16 +565,16 @@ contains
     panel_id_y => get_panel_id(mesh_id)
     face_selector_ew => get_face_selector_ew(mesh_id)
     face_selector_ns => get_face_selector_ns(mesh_id)
+    outer = swift_splitting
 
     if (equation_form == equation_form_consistent) then
+      ! Consistent form of equation uses mass in place of volume
       step = transport_runtime%get_tracer_step_ctr()
       if (swift_splitting) then
-        outer = .true.
         dry_mass_x => transport_runtime%get_dry_mass_ffsl_x(mesh_id, step)
         dry_mass_y => transport_runtime%get_dry_mass_ffsl_y(mesh_id, step)
       else
         ! Same density used for both steps
-        outer = .false.
         dry_mass_x => transport_runtime%get_dry_mass(mesh_id, step)
         dry_mass_y => transport_runtime%get_dry_mass(mesh_id, step)
       end if
@@ -547,13 +582,12 @@ contains
       dep_stencil_extent_xy => transport_runtime%get_tracer_stencil_extent_xy(mesh_id, step, outer)
       frac_flux_xy => transport_runtime%get_dry_frac_flux_xy(mesh_id, step, outer)
     else
-      if (strang) then
-        frac_flux_xy => transport_runtime%get_frac_wind_xy_half(mesh_id)
-      else
-        frac_flux_xy => transport_runtime%get_frac_wind_xy(mesh_id)
-      end if
-      dep_dist_xy => transport_runtime%get_dep_dist_xy_w2(mesh_id, strang)
-      dep_stencil_extent_xy => transport_runtime%get_dep_stencil_extent_xy(mesh_id)
+      ! Advective/conservative forms of equation use volume ("detj") of cells
+      frac_flux_xy => transport_runtime%get_frac_wind_xy(mesh_id, strang, outer)
+      adv_detj_x => transport_runtime%get_adv_detj_x(mesh_id, strang)
+      adv_detj_y => transport_runtime%get_adv_detj_y(mesh_id, strang)
+      dep_dist_xy => transport_runtime%get_dep_dist_xy_w2(mesh_id, strang, outer)
+      dep_stencil_extent_xy => transport_runtime%get_dep_stencil_extent_xy(mesh_id, outer)
     end if
 
     ! Function spaces
@@ -609,8 +643,14 @@ contains
     call invoke_ffsl_panel_swap_kernel_type(remap_field_x, remap_field_y, &
                                             panel_id_x, cfl_stencil_xy)
 
+    ! MASS FLUX COMPUTATION ====================================================
+    ! Kernel and arguments depend on:
+    ! (a) equation form, (b) FFSL splitting and (c) special edge treatment
+    ! For consistent equation form, use dry mass instead of detj
+    ! For consistent equation form, splittings do not need distinguishing as
+    ! the correct support fields (e.g. dry mass) should already be pointed to
     if (equation_form == equation_form_consistent .and. special_edges_treatment) then
-      ! Compute the mass fluxes: -----------------------------------------------
+      ! Consistent and special edge treatment ----------------------------------
       call invoke( setval_c(flux, 0.0_r_tran),                                 &
                    ffsl_flux_xy_spt_kernel_type(                               &
                                              flux,                             &
@@ -626,7 +666,7 @@ contains
                                              monotone, cfl_stencil_xy, dt ) )
 
     else if (equation_form == equation_form_consistent) then
-      ! Compute the mass fluxes: -----------------------------------------------
+      ! Consistent but not special edges ---------------------------------------
       call invoke( setval_c(flux, 0.0_r_tran),                                 &
                    ffsl_flux_xy_kernel_type( flux,                             &
                                              remap_field_y, stencil_extent_xy, &
@@ -637,9 +677,37 @@ contains
                                              face_selector_ew,                 &
                                              face_selector_ns, order,          &
                                              monotone, cfl_stencil_xy, dt ) )
-    ! Conservative/advective forms of the transport equation
+    ! Conservative/advective forms of the transport equation ===================
+    else if (special_edges_treatment .and. swift_splitting) then
+      ! Advective/conservative, SWIFT splitting and special edges --------------
+      call invoke( setval_c(flux, 0.0_r_tran),                                 &
+                   ffsl_flux_xy_spt_kernel_type(                               &
+                                             flux,                             &
+                                             remap_field_y, stencil_extent_xy, &
+                                             adv_detj_y, stencil_extent_xy,    &
+                                             remap_field_x, stencil_extent_xy, &
+                                             adv_detj_x, stencil_extent_xy,    &
+                                             dep_dist_xy, frac_flux_xy,        &
+                                             panel_id_y, stencil_extent_xy,    &
+                                             panel_id_x, stencil_extent_xy,    &
+                                             face_selector_ew,                 &
+                                             face_selector_ns, order,          &
+                                             monotone, cfl_stencil_xy, dt ) )
+
+    else if (swift_splitting) then
+      ! Advective/conservative, SWIFT splitting but not special edges ----------
+      call invoke( setval_c(flux, 0.0_r_tran),                                 &
+                   ffsl_flux_xy_kernel_type( flux,                             &
+                                             remap_field_y, stencil_extent_xy, &
+                                             adv_detj_y, stencil_extent_xy,    &
+                                             remap_field_x, stencil_extent_xy, &
+                                             adv_detj_x, stencil_extent_xy,    &
+                                             dep_dist_xy, frac_flux_xy,        &
+                                             face_selector_ew,                 &
+                                             face_selector_ns, order,          &
+                                             monotone, cfl_stencil_xy, dt ) )
     else if (special_edges_treatment) then
-      ! Compute the mass fluxes: ----------------------------------------------
+      ! Advective/conservative, COSMIC splitting and special edges -------------
       call invoke( setval_c(flux, 0.0_r_tran),                                 &
                    ffsl_flux_xy_spt_kernel_type(                               &
                                              flux,                             &
@@ -655,8 +723,8 @@ contains
                                              face_selector_ns, order,          &
                                              monotone, cfl_stencil_xy, dt ) )
 
-    else  ! Conservative/advective forms of the transport equation
-      ! Compute the mass fluxes: ----------------------------------------------
+    else
+      ! Advective/conservative, COSMIC splitting but not special edges ---------
       call invoke( setval_c(flux, 0.0_r_tran),                                 &
                    ffsl_flux_xy_kernel_type( flux,                             &
                                              remap_field_y, stencil_extent_xy, &
@@ -685,68 +753,79 @@ contains
     ! Compute advective increments, if required --------------------------------
     if (to_compute_adv_inc .or. to_compute_field_np1 .or. is_dry_field) then
       if ( subroutine_timers ) call timer('transport.ffsl_hori_update')
+      ! Calculate advective update / increment, depending on equation
       select case ( equation_form )
       case ( equation_form_conservative, equation_form_advective )
         call increment_x%initialise( vector_space = field_fs )
         call increment_y%initialise( vector_space = field_fs )
 
-        if ( strang ) then
-          adv_one_x => transport_runtime%get_adv_unity_half_x(mesh_id)
-          adv_one_y => transport_runtime%get_adv_unity_half_y(mesh_id)
-        else
-          adv_one_x => transport_runtime%get_adv_unity_x(mesh_id)
-          adv_one_y => transport_runtime%get_adv_unity_y(mesh_id)
-        end if
+        ! Update depends on SWIFT or COSMIC splitting
+        if ( swift_splitting .and. to_compute_field_np1 ) then
+          call invoke( fv_difference_x_kernel_type(increment_x, flux),         &
+                       fv_difference_y_kernel_type(increment_y, flux) )
 
-        ! Compute updated conservative fields
-        call invoke( fv_divergence_x_kernel_type(increment_x, flux,            &
-                                                 detj_at_w3),                  &
-                     fv_divergence_y_kernel_type(increment_y, flux,            &
-                                                 detj_at_w3) )
+          adv_detj_xy => transport_runtime%get_adv_detj_xy(mesh_id, strang)
+          ! @todo #4301: replace this with loop fusion
+          call invoke_swift_outer_update_tracer(field_np1, field_x, field_y,   &
+                                                adv_detj_xy, adv_detj_x,       &
+                                                adv_detj_y, increment_x,       &
+                                                increment_y, dt )
 
-        ! Need to pause here to compute rho_d_ffsl that is stored for consistent transport
-        if ( is_dry_field .and. check_any_eqn_consistent() ) then
-          ! Compute stored FFSL density fields by adding increments the
-          ! previous conservative rho fields, and not the advective rho predictor
-          call conservative_field_x%initialise( vector_space = field_fs )
-          call conservative_field_y%initialise( vector_space = field_fs )
+        else ! COSMIC splitting
 
-          step = transport_runtime%get_tracer_step_ctr()
-          if (step == 1) then
-            rho_d_n => field_n
-          else
-            rho_d_n => transport_runtime%get_rho_d(mesh_id, step)
-          end if
-          call invoke( X_minus_bY(conservative_field_x, rho_d_n, dt,           &
+          call invoke( fv_divergence_x_kernel_type(increment_x, flux,          &
+                                                   detj_at_w3),                &
+                       fv_divergence_y_kernel_type(increment_y, flux,          &
+                                                   detj_at_w3) )
+
+          ! @todo this section needs removing following lfric-apps:#32
+          ! Need to pause here to compute rho_d_ffsl that is stored for consistent transport
+          if ( is_dry_field .and. check_any_eqn_consistent() ) then
+            ! Compute stored FFSL density fields by adding increments the
+            ! previous conservative rho fields, and not the advective rho predictor
+            call conservative_field_x%initialise( vector_space = field_fs )
+            call conservative_field_y%initialise( vector_space = field_fs )
+
+            step = transport_runtime%get_tracer_step_ctr()
+            if (step == 1) then
+              rho_d_n => field_n
+            else
+              rho_d_n => transport_runtime%get_rho_d(mesh_id, step)
+            end if
+            call invoke( X_minus_bY(conservative_field_x, rho_d_n, dt,         &
                                                                 increment_x),  &
-                       X_minus_bY(conservative_field_y, rho_d_n, dt,           &
+                         X_minus_bY(conservative_field_y, rho_d_n, dt,         &
                                                                 increment_y) )
 
-          if ( limited_area .and. topology == topology_non_periodic ) then
-            call overwrite_blending_zone_rtran(conservative_field_x, rho_d_n,  &
-                                               depth=transport_boundary_depth)
-            call overwrite_blending_zone_rtran(conservative_field_y, rho_d_n,  &
-                                               depth=transport_boundary_depth)
+            if ( limited_area .and. topology == topology_non_periodic ) then
+              call overwrite_blending_zone_rtran(conservative_field_x, rho_d_n, &
+                                                 depth=transport_boundary_depth)
+              call overwrite_blending_zone_rtran(conservative_field_y, rho_d_n, &
+                                                 depth=transport_boundary_depth)
+            end if
+
+            call transport_runtime%set_rho_d_ffsl_x(conservative_field_x, step)
+            call transport_runtime%set_rho_d_ffsl_y(conservative_field_y, step)
           end if
 
-          call transport_runtime%set_rho_d_ffsl_x(conservative_field_x, step)
-          call transport_runtime%set_rho_d_ffsl_y(conservative_field_y, step)
-        end if
+          adv_one_x => transport_runtime%get_adv_unity_x(mesh_id, strang)
+          adv_one_y => transport_runtime%get_adv_unity_y(mesh_id, strang)
 
-        ! Compute advective increments, through division by unity transport ----
-        ! Following Putman and Lin, JCP, 2007:
-        ! conservative_field = q - dt * F(q)
-        ! adv_one   = 1 - dt * F(1)
-        ! inc_part  = q - conservative_field / adv_one
-        ! increment = inc_part / dt
-        ! Psykal lite code to optimise computation
-        ! @todo #4301: replace this with loop fusion
-        call invoke_ffsl_advective_increment(increment_x, field_y, dt, adv_one_x)
-        call invoke_ffsl_advective_increment(increment_y, field_x, dt, adv_one_y)
+          ! Compute advective increments, through division by unity transport --
+          ! Following Putman and Lin, JCP, 2007:
+          ! conservative_field = q - dt * F(q)
+          ! adv_one   = 1 - dt * F(1)
+          ! inc_part  = q - conservative_field / adv_one
+          ! increment = inc_part / dt
+          ! Psykal lite code to optimise computation
+          ! @todo #4301: replace this with loop fusion
+          call invoke_ffsl_advective_increment(increment_x, field_y, dt, adv_one_x)
+          call invoke_ffsl_advective_increment(increment_y, field_x, dt, adv_one_y)
 
-        if ( to_compute_field_np1 ) then
-          call invoke( X_minus_bY(field_np1, field_n, dt, increment_x),        &
-                       inc_X_minus_bY(field_np1, dt, increment_y) )
+          if ( to_compute_field_np1 ) then
+            call invoke( X_minus_bY(field_np1, field_n, dt, increment_x),      &
+                         inc_X_minus_bY(field_np1, dt, increment_y) )
+          end if
         end if
 
       case ( equation_form_consistent )
@@ -755,6 +834,7 @@ contains
         call increment_x%initialise( vector_space = field_fs )
         call increment_y%initialise( vector_space = field_fs )
 
+        ! Update depends on SWIFT or COSMIC splitting
         if (swift_splitting) then
           ! Calculate increment to tracer density
           call invoke( fv_difference_x_kernel_type(increment_x, flux),         &
@@ -766,8 +846,7 @@ contains
                                                 dry_mass_np1, dry_mass_x,      &
                                                 dry_mass_y, increment_x,       &
                                                 increment_y, dt )
-        else
-
+        else  ! COSMIC splitting
           call conservative_field_np1%initialise( vector_space = field_fs )
           call conservative_field_n%initialise( vector_space = field_fs )
           call increment%initialise( vector_space = field_fs )
@@ -797,23 +876,17 @@ contains
         end if
 
       case default
-        call log_event( "ffsl_hori_final_alg: Unrecognized equation form", LOG_LEVEL_ERROR )
+        call log_event( "ffsl_hori_outer_alg: Unrecognized equation form", LOG_LEVEL_ERROR )
 
       end select
       if ( subroutine_timers ) call timer('transport.ffsl_hori_update')
     end if
 
-    nullify(transport_runtime, mesh, detj_at_w3, detj_at_w3_copy, dep_dist_xy, &
-            panel_id_x, panel_id_y, adv_one_x, adv_one_y,                      &
-            dep_stencil_extent_xy, field_fs, w2h_fs, frac_flux_xy,             &
-            rho_d_n, w2b_fs, face_selector_ew, face_selector_ns, rho_d_np1,    &
-            dry_mass_n, dry_mass_x, dry_mass_y, dry_mass_np1)
+  end subroutine ffsl_hori_outer_alg
 
-  end subroutine ffsl_hori_final_alg
-
-  !> @brief The first horizontal sweeps for consistent FFSL with Swift splitting
+  !> @brief The first horizontal sweeps for FFSL with Swift splitting
   !> @details Calculates the mass fluxes and updated mixing ratio fields from
-  !!          1D X and Y horizontal consistent FFSL sweeps,.
+  !!          1D X and Y horizontal FFSL sweeps.
   !> @param[in,out] flux               Horizontal mass flux
   !> @param[in,out] field_x            Updated mixing ratio field from x-sweep
   !> @param[in,out] field_y            Updated mixing ratio field from y-sweep
@@ -823,9 +896,8 @@ contains
   !> @param[in]     transport_metadata Contains the configuration options for
   !!                                   transporting this field
   !> @param[in]     order              The reconstruction order to use.
-  subroutine consistent_ffsl_hori_first_alg( flux, field_x, field_y,           &
-                                             field_n, step_dt,                 &
-                                             transport_metadata, order )
+  subroutine ffsl_hori_swift_inner_alg( flux, field_x, field_y, field_n,       &
+                                        step_dt, transport_metadata, order )
 
     ! Arguments ----------------------------------------------------------------
     type(r_tran_field_type),         intent(inout) :: field_x
@@ -838,19 +910,23 @@ contains
 
     ! Internal variables -------------------------------------------------------
     ! Pointers to existing objects
-    type(transport_runtime_type), pointer :: transport_runtime => null()
-    type(mesh_type),              pointer :: mesh => null()
-    type(r_tran_field_type),      pointer :: dep_dist_xy => null()
-    type(r_tran_field_type),      pointer :: frac_flux_xy => null()
-    type(r_tran_field_type),      pointer :: dry_mass_n => null()
-    type(r_tran_field_type),      pointer :: dry_mass_n_copy => null()
-    type(r_tran_field_type),      pointer :: dry_mass_x => null()
-    type(r_tran_field_type),      pointer :: dry_mass_y => null()
-    type(field_type),             pointer :: panel_id_x => null()
-    type(field_type),             pointer :: panel_id_y => null()
-    type(integer_field_type),     pointer :: face_selector_ew => null()
-    type(integer_field_type),     pointer :: face_selector_ns => null()
-    integer(kind=i_def),          pointer :: dep_stencil_extent_xy => null()
+    type(transport_runtime_type), pointer :: transport_runtime
+    type(mesh_type),              pointer :: mesh
+    type(r_tran_field_type),      pointer :: dep_dist_xy
+    type(r_tran_field_type),      pointer :: frac_flux_xy
+    type(r_tran_field_type),      pointer :: dry_mass_n
+    type(r_tran_field_type),      pointer :: dry_mass_n_copy
+    type(r_tran_field_type),      pointer :: dry_mass_x
+    type(r_tran_field_type),      pointer :: dry_mass_y
+    type(r_tran_field_type),      pointer :: detj_at_w3
+    type(r_tran_field_type),      pointer :: detj_at_w3_copy
+    type(r_tran_field_type),      pointer :: adv_detj_x
+    type(r_tran_field_type),      pointer :: adv_detj_y
+    type(field_type),             pointer :: panel_id_x
+    type(field_type),             pointer :: panel_id_y
+    type(integer_field_type),     pointer :: face_selector_ew
+    type(integer_field_type),     pointer :: face_selector_ns
+    integer(kind=i_def),          pointer :: dep_stencil_extent_xy
 
     ! Fields and increments
     type(r_tran_field_type), target :: field_big_halo
@@ -863,16 +939,18 @@ contains
     type(r_tran_field_type) :: increment_y
 
     ! Pointer to field, to avoid unnecessary setval calculation
-    type(r_tran_field_type),   pointer :: field_ptr_copy => null()
+    type(r_tran_field_type),   pointer :: field_ptr_copy
 
     ! Function spaces
-    type(function_space_type), pointer :: field_fs => null()
-    type(function_space_type), pointer :: w2h_fs => null()
-    type(function_space_type), pointer :: w2b_fs => null()
+    type(function_space_type), pointer :: field_fs
+    type(function_space_type), pointer :: w2h_fs
+    type(function_space_type), pointer :: w2b_fs
 
     ! Transport options
     integer(kind=i_def) :: monotone
     logical(kind=l_def) :: monotone_remap
+    integer(kind=i_def) :: equation_form
+    logical(kind=l_def) :: strang
 
     ! Constants
     integer(kind=i_def) :: mesh_id, step
@@ -888,19 +966,34 @@ contains
 
     ! Get options
     monotone = transport_metadata%get_horizontal_monotone()
+    equation_form = transport_metadata%get_equation_form()
+    strang = (transport_metadata%get_splitting() == splitting_strang_hvh)
 
     step = transport_runtime%get_tracer_step_ctr()
-    dry_mass_n => transport_runtime%get_dry_mass(mesh_id, step)
-    dry_mass_n_copy => transport_runtime%get_dry_mass(mesh_id, step)
-    dry_mass_x => transport_runtime%get_dry_mass_ffsl_x(mesh_id, step)
-    dry_mass_y => transport_runtime%get_dry_mass_ffsl_y(mesh_id, step)
-    dep_dist_xy => transport_runtime%get_tracer_dep_dist_xy(mesh_id, step, outer_step=.false.)
-    dep_stencil_extent_xy => transport_runtime%get_tracer_stencil_extent_xy(mesh_id, step, outer_step=.false.)
-    frac_flux_xy => transport_runtime%get_dry_frac_flux_xy(mesh_id, step, outer_step=.false.)
     panel_id_x => get_panel_id(mesh_id)
     panel_id_y => get_panel_id(mesh_id)
     face_selector_ew => get_face_selector_ew(mesh_id)
     face_selector_ns => get_face_selector_ns(mesh_id)
+
+    if (equation_form == equation_form_consistent) then
+      ! Consistent form of equation uses dry mass in place of volume
+      dry_mass_n => transport_runtime%get_dry_mass(mesh_id, step)
+      dry_mass_n_copy => transport_runtime%get_dry_mass(mesh_id, step)
+      dry_mass_x => transport_runtime%get_dry_mass_ffsl_x(mesh_id, step)
+      dry_mass_y => transport_runtime%get_dry_mass_ffsl_y(mesh_id, step)
+      dep_dist_xy => transport_runtime%get_tracer_dep_dist_xy(mesh_id, step, outer_step=.false.)
+      dep_stencil_extent_xy => transport_runtime%get_tracer_stencil_extent_xy(mesh_id, step, outer_step=.false.)
+      frac_flux_xy => transport_runtime%get_dry_frac_flux_xy(mesh_id, step, outer_step=.false.)
+    else
+      ! Advective/conservative forms of equation use volume ("detj")
+      detj_at_w3 => get_detj_at_w3_r_tran(mesh_id)
+      detj_at_w3_copy => get_detj_at_w3_r_tran(mesh_id)
+      adv_detj_x => transport_runtime%get_adv_detj_x(mesh_id, strang)
+      adv_detj_y => transport_runtime%get_adv_detj_y(mesh_id, strang)
+      dep_dist_xy => transport_runtime%get_dep_dist_xy_w2(mesh_id, strang, outer_step=.false.)
+      dep_stencil_extent_xy => transport_runtime%get_dep_stencil_extent_xy(mesh_id, outer_step=.false.)
+      frac_flux_xy => transport_runtime%get_frac_wind_xy(mesh_id, strang, outer_step=.false.)
+    end if
 
     ! Function spaces
     w2h_fs   => dep_dist_xy%get_function_space()
@@ -937,8 +1030,12 @@ contains
     field_ptr_copy => field_big_halo
 
     if ( subroutine_timers ) call timer('transport.ffsl_hori_sweeps')
-    ! Compute the mass fluxes: ------------------------------------------------
-    if (special_edges_treatment) then
+    ! MASS FLUX COMPUTATION ====================================================
+    ! Kernel and arguments depend on:
+    ! (a) equation form, (b) special edge treatment
+    ! For consistent equation form, use dry mass instead of detj
+    if (equation_form == equation_form_consistent .and. special_edges_treatment) then
+      ! Consistent and special edges -------------------------------------------
       call invoke( setval_c(flux, 0.0_r_tran),                                  &
                    ffsl_flux_xy_spt_kernel_type(                                &
                                             flux,                               &
@@ -952,13 +1049,44 @@ contains
                                             face_selector_ew,                   &
                                             face_selector_ns, order,            &
                                             monotone, cfl_stencil_xy, step_dt ) )
-    else
+
+    else if (equation_form == equation_form_consistent) then
+      ! Consistent but not special edges ---------------------------------------
       call invoke( setval_c(flux, 0.0_r_tran),                                  &
                    ffsl_flux_xy_kernel_type(flux,                               &
                                             field_big_halo, stencil_extent_xy,  &
                                             dry_mass_n, stencil_extent_xy,      &
                                             field_ptr_copy, stencil_extent_xy,  &
                                             dry_mass_n_copy, stencil_extent_xy, &
+                                            dep_dist_xy, frac_flux_xy,          &
+                                            face_selector_ew,                   &
+                                            face_selector_ns, order,            &
+                                            monotone, cfl_stencil_xy, step_dt ) )
+
+    else if (special_edges_treatment) then
+      ! Advective/conservative and special edges -------------------------------
+      call invoke( setval_c(flux, 0.0_r_tran),                                  &
+                   ffsl_flux_xy_spt_kernel_type(                                &
+                                            flux,                               &
+                                            field_big_halo, stencil_extent_xy,  &
+                                            detj_at_w3, stencil_extent_xy,      &
+                                            field_ptr_copy, stencil_extent_xy,  &
+                                            detj_at_w3_copy, stencil_extent_xy, &
+                                            dep_dist_xy, frac_flux_xy,          &
+                                            panel_id_x, stencil_extent_xy,      &
+                                            panel_id_y, stencil_extent_xy,      &
+                                            face_selector_ew,                   &
+                                            face_selector_ns, order,            &
+                                            monotone, cfl_stencil_xy, step_dt ) )
+
+    else
+      ! Advective/conservative but not special edges ---------------------------
+      call invoke( setval_c(flux, 0.0_r_tran),                                  &
+                   ffsl_flux_xy_kernel_type(flux,                               &
+                                            field_big_halo, stencil_extent_xy,  &
+                                            detj_at_w3, stencil_extent_xy,      &
+                                            field_ptr_copy, stencil_extent_xy,  &
+                                            detj_at_w3_copy, stencil_extent_xy, &
                                             dep_dist_xy, frac_flux_xy,          &
                                             face_selector_ew,                   &
                                             face_selector_ns, order,            &
@@ -984,19 +1112,21 @@ contains
     ! Obtain updated mixing ratio by dividing by updated density
     ! Psykal lite calculation to optimise loops
     ! @todo #4301: replace this with loop fusion
-    call invoke_swift_inner_update_tracer(field_x, field_n, dry_mass_x,        &
-                                          dry_mass_n, increment_x, step_dt)
-    call invoke_swift_inner_update_tracer(field_y, field_n, dry_mass_y,        &
-                                          dry_mass_n, increment_y, step_dt)
+    if (equation_form == equation_form_consistent) then
+      call invoke_swift_inner_update_tracer(field_x, field_n, dry_mass_x,      &
+                                            dry_mass_n, increment_x, step_dt)
+      call invoke_swift_inner_update_tracer(field_y, field_n, dry_mass_y,      &
+                                            dry_mass_n, increment_y, step_dt)
+    else
+      call invoke_swift_inner_update_tracer(field_x, field_n, adv_detj_x,      &
+                                            detj_at_w3, increment_x, step_dt)
+      call invoke_swift_inner_update_tracer(field_y, field_n, adv_detj_y,      &
+                                            detj_at_w3, increment_y, step_dt)
+    end if
 
     if ( subroutine_timers ) call timer('transport.ffsl_hori_update')
 
-    nullify(transport_runtime, mesh, dep_dist_xy, frac_flux_xy,          &
-            panel_id_x, panel_id_y, dry_mass_n, dry_mass_x, dry_mass_y,  &
-            dep_stencil_extent_xy, field_fs, w2h_fs, w2b_fs,             &
-            face_selector_ew, face_selector_ns )
-
-  end subroutine consistent_ffsl_hori_first_alg
+  end subroutine ffsl_hori_swift_inner_alg
 
   !----------------------------------------------------------------------------
   !> @brief  Returns the number of extra points required for ffsl stencil

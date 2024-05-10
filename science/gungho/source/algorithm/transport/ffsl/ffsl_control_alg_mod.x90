@@ -98,6 +98,7 @@ contains
 
     ! Determine whether individual routines should return a flux or updated field
     compute_adv_field = ( transport_metadata%get_equation_form() == equation_form_advective &
+      .or. transport_metadata%get_equation_form() == equation_form_consistent &
       .or. transport_runtime%get_tracer_step_ctr() /=  transport_runtime%get_num_dry_steps() )
 
     ! ======================================================================== !
@@ -179,7 +180,8 @@ contains
       ! over the whole transport step
       ! If this is not the final step, field_np1 already includes the *advective*
       ! increment, and may be adjusted to enforce min value or in blending zone
-      call end_of_consistent_step_alg(field_np1, mass_flux, transport_metadata)
+      call end_of_consistent_step_alg(field_np1, mass_flux, transport_metadata, &
+                                      compute_field_np1=.false.)
 
     case ( equation_form_advective )
       ! End of step: if necessary enforce min val and overwrite in blending zone

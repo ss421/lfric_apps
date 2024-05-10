@@ -116,9 +116,9 @@ module horizontal_sl_advective_alg_mod
 
     ! Get departure points
     strang = ( transport_metadata%get_splitting() ==  splitting_strang_hvh )
-    dep_dist_xy => transport_runtime%get_dep_dist_xy_w2(mesh_id, strang)
+    dep_dist_xy => transport_runtime%get_dep_dist_xy_w2(mesh_id, strang, .false.)
     ! Get stencil extent
-    dep_stencil_extent_xy => transport_runtime%get_dep_stencil_extent_xy(mesh_id)
+    dep_stencil_extent_xy => transport_runtime%get_dep_stencil_extent_xy(mesh_id, .false.)
 
     ! Get monotone option
     hori_monotone = transport_metadata%get_horizontal_monotone()

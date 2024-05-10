@@ -21,7 +21,7 @@ module transport_metadata_collection_test
                                              horizontal_monotone_none,       &
                                              vertical_monotone_none,         &
                                              vertical_monotone_order_linear, &
-                                             consistent_ffsl_splitting_swift
+                                             ffsl_splitting_swift
   use transport_metadata_collection_mod, &
                                       only : transport_metadata_collection_type, &
                                              transport_metadata_collection
@@ -84,7 +84,7 @@ contains
                                  log_space = (/ .false., .false., .false. /),         &
                                  enforce_min_value = (/ .false., .false., .false. /), &
                                  min_value = (/ 0.0_r_def, 0.0_r_def, 0.0_r_def /),   &
-                                 consistent_ffsl_splitting = (/ 1, 1, 1 /),           &
+                                 ffsl_splitting = (/ 1, 1, 1 /),                      &
                                  operators = operators_fv,                            &
                                  runge_kutta_method =                                 &
                                               runge_kutta_method_ssp2,                &
@@ -173,7 +173,7 @@ contains
                                        zero_min_value,                 &
                                        no_logspace,                    &
                                        reversible,                     &
-                                       consistent_ffsl_splitting_swift)
+                                       ffsl_splitting_swift)
 
     call transport_metadata_collection%set_transport_metadata(metadata)
 
@@ -191,7 +191,7 @@ contains
                                        zero_min_value,                 &
                                        no_logspace,                    &
                                        reversible,                     &
-                                       consistent_ffsl_splitting_swift)
+                                       ffsl_splitting_swift)
 
     call transport_metadata_collection%set_transport_metadata(metadata)
 
@@ -209,7 +209,7 @@ contains
                                        one_min_value,                  &
                                        logspace,                       &
                                        reversible,                     &
-                                       consistent_ffsl_splitting_swift)
+                                       ffsl_splitting_swift)
 
     call transport_metadata_collection%set_transport_metadata(metadata)
 

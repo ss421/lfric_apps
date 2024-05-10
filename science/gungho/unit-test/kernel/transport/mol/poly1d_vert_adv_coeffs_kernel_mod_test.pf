@@ -77,7 +77,7 @@ contains
                                  horizontal_monotone = (/1/),                              &
                                  vertical_monotone = (/1/),                                &
                                  vertical_monotone_order = (/1/),                          &
-                                 consistent_ffsl_splitting = (/ 1 /),                      &
+                                 ffsl_splitting = (/ 1 /),                                 &
                                  log_space = (/.false./),                                  &
                                  enforce_min_value = (/.false./),                          &
                                  min_value = (/0.0_r_def/),                                &

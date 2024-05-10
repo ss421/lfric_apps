@@ -81,8 +81,6 @@ contains
 !!                                  transport step
 !> @param[in]     stencil_size_y    Size of the Y1D stencil for the mass field
 !> @param[in]     stencil_map_y     Map of DoFs in the stencil for mass field
-!> @param[in]     stencil_size      Size of the stencil for the mass field
-!> @param[in]     stencil_map       Map of DoFs in the stencil for mass field
 !> @param[in]     face_selector_ew  2D field indicating which faces to loop over in x
 !> @param[in]     face_selector_ns  2D field indicating which faces to loop over in y
 !> @param[in]     stencil_extent    Max number of stencil cells in one direction
@@ -149,7 +147,7 @@ subroutine hori_dep_dist_ffsl_code( nlayers,             &
   integer(kind=i_def) :: stencil_idx, col_idx, rel_idx
   real(kind=r_tran)   :: flux_face_i, running_flux_i, flux_cell_j
   real(kind=r_tran)   :: frac_dep_dist, frac_flux_face_i
-  integer(kind=i_def) :: stencil_size, stencil_half, lam_edge_size
+  integer(kind=i_def) :: stencil_half, lam_edge_size
   integer(kind=i_def) :: local_dofs_x(2), local_dofs_y(2)
 
   ! x-direction
@@ -157,22 +155,16 @@ subroutine hori_dep_dist_ffsl_code( nlayers,             &
   local_dofs_y = (/ S, N /)
 
   ! Set stencil info -----------------------------------------------------------
-  stencil_size = stencil_size_x
-  stencil_half = (stencil_size + 1_i_def) / 2_i_def
+  stencil_half = (stencil_size_x + 1_i_def) / 2_i_def
   lam_edge_size = 2_i_def*stencil_extent+1_i_def
 
+  ! = X Calculation ========================================================== !
+
   ! Calculation near LAM boundaries --------------------------------------------
-  if (lam_edge_size > stencil_size) then
+  if (lam_edge_size > stencil_size_x) then
     ! Set output to zero
     do df_idx = 1, face_selector_ew(map_w3_2d(1))
       df = local_dofs_x(df_idx)
-      do k = 0, nlayers - 1
-        frac_dry_flux(map_w2h(df) + k) = 0.0_r_tran
-        dep_dist(map_w2h(df) + k) = 0.0_r_tran
-      end do
-    end do
-    do df_idx = 1, face_selector_ns(map_w3_2d(1))
-      df = local_dofs_y(df_idx)
       do k = 0, nlayers - 1
         frac_dry_flux(map_w2h(df) + k) = 0.0_r_tran
         dep_dist(map_w2h(df) + k) = 0.0_r_tran
@@ -276,8 +268,27 @@ subroutine hori_dep_dist_ffsl_code( nlayers,             &
         dep_dist(idx_w2h+k) = real(sign_flux*num_int_cells, r_tran) + frac_dep_dist
       end do
     end do
+  end if
 
-    ! ----------------------------------------------------------------------- !
+  ! = Y Calculation ========================================================== !
+  stencil_half = (stencil_size_y + 1_i_def) / 2_i_def
+
+  ! Calculation near LAM boundaries --------------------------------------------
+  if (lam_edge_size > stencil_size_y) then
+    ! Set output to zero
+    do df_idx = 1, face_selector_ns(map_w3_2d(1))
+      df = local_dofs_y(df_idx)
+      do k = 0, nlayers - 1
+        frac_dry_flux(map_w2h(df) + k) = 0.0_r_tran
+        dep_dist(map_w2h(df) + k) = 0.0_r_tran
+      end do
+    end do
+
+  else
+
+  ! ========================================================================== !
+  ! Calculation in domain interior
+  ! ========================================================================== !
 
     ! Loop through horizontal y DoFs
     do df_idx = 1, face_selector_ns(map_w3_2d(1))

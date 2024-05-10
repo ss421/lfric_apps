@@ -24,6 +24,7 @@ module transport_runtime_alg_mod
                                             check_any_splitting_vhv,         &
                                             check_any_splitting_hvh,         &
                                             check_any_eqn_consistent,        &
+                                            check_any_advective_swift,       &
                                             check_any_consistent_swift,      &
                                             check_any_consistent_cosmic,     &
                                             get_required_stencil_depth
@@ -98,6 +99,7 @@ module transport_runtime_alg_mod
     integer(kind=i_def)                                       :: tracer_step_ctr
     integer(kind=i_def),        allocatable, dimension(:)     :: mesh_ids
     integer(kind=i_def),        allocatable, dimension(:)     :: dep_stencil_extent_xy
+    integer(kind=i_def),        allocatable, dimension(:)     :: dep_stencil_extent_oxy
     integer(kind=i_def),        allocatable, dimension(:,:)   :: tracer_stencil_extent_ixy
     integer(kind=i_def),        allocatable, dimension(:,:)   :: tracer_stencil_extent_oxy
     type(r_tran_field_type),    allocatable, dimension(:)     :: advecting_wind
@@ -105,12 +107,16 @@ module transport_runtime_alg_mod
     type(r_tran_field_type),    allocatable, dimension(:)     :: vertical_advecting_wind
     type(r_tran_field_type),    allocatable, dimension(:)     :: dep_dist_xy_w2
     type(r_tran_field_type),    allocatable, dimension(:)     :: dep_dist_xy_half_w2
+    type(r_tran_field_type),    allocatable, dimension(:)     :: dep_dist_oxy_w2
+    type(r_tran_field_type),    allocatable, dimension(:)     :: dep_dist_oxy_half_w2
     type(r_tran_field_type),    allocatable, dimension(:)     :: dep_dist_z_w2
     type(r_tran_field_type),    allocatable, dimension(:)     :: dep_dist_z_half_w2
     type(r_tran_field_type),    allocatable, dimension(:)     :: frac_wind_z
     type(r_tran_field_type),    allocatable, dimension(:)     :: frac_wind_z_half
     type(r_tran_field_type),    allocatable, dimension(:)     :: frac_wind_xy
     type(r_tran_field_type),    allocatable, dimension(:)     :: frac_wind_xy_half
+    type(r_tran_field_type),    allocatable, dimension(:)     :: frac_wind_oxy
+    type(r_tran_field_type),    allocatable, dimension(:)     :: frac_wind_oxy_half
     type(r_tran_field_type),    allocatable, dimension(:,:)   :: tracer_dep_dist_z
     type(r_tran_field_type),    allocatable, dimension(:,:)   :: tracer_dep_dist_ixy
     type(r_tran_field_type),    allocatable, dimension(:,:)   :: tracer_dep_dist_oxy
@@ -123,6 +129,12 @@ module transport_runtime_alg_mod
     type(r_tran_field_type),    allocatable, dimension(:)     :: adv_unity_half_x
     type(r_tran_field_type),    allocatable, dimension(:)     :: adv_unity_half_y
     type(r_tran_field_type),    allocatable, dimension(:)     :: adv_unity_half_z
+    type(r_tran_field_type),    allocatable, dimension(:)     :: adv_detj_x
+    type(r_tran_field_type),    allocatable, dimension(:)     :: adv_detj_y
+    type(r_tran_field_type),    allocatable, dimension(:)     :: adv_detj_xy
+    type(r_tran_field_type),    allocatable, dimension(:)     :: adv_detj_x_half
+    type(r_tran_field_type),    allocatable, dimension(:)     :: adv_detj_y_half
+    type(r_tran_field_type),    allocatable, dimension(:)     :: adv_detj_xy_half
     type(r_tran_field_type)                                   :: field_n
     type(r_tran_field_type),    allocatable, dimension(:,:)   :: rho_d
     type(r_tran_field_type),    allocatable, dimension(:,:)   :: dry_mass
@@ -167,8 +179,6 @@ module transport_runtime_alg_mod
     procedure, public  :: get_dep_dist_z_w2
     procedure, public  :: get_dep_dist_xy_w2
     procedure, public  :: get_frac_wind_z
-    procedure, public  :: get_frac_wind_z_half
-    procedure, public  :: get_frac_wind_xy_half
     procedure, public  :: get_frac_wind_xy
     procedure, public  :: get_tracer_dep_dist_z
     procedure, public  :: get_tracer_dep_dist_xy
@@ -179,9 +189,9 @@ module transport_runtime_alg_mod
     procedure, public  :: get_adv_unity_x
     procedure, public  :: get_adv_unity_y
     procedure, public  :: get_adv_unity_z
-    procedure, public  :: get_adv_unity_half_x
-    procedure, public  :: get_adv_unity_half_y
-    procedure, public  :: get_adv_unity_half_z
+    procedure, public  :: get_adv_detj_x
+    procedure, public  :: get_adv_detj_y
+    procedure, public  :: get_adv_detj_xy
     procedure, public  :: get_vert_sl_coef
     procedure, public  :: get_vert_sl_index
     procedure, public  :: get_field_n
@@ -238,7 +248,8 @@ contains
     use compute_sl_coefficients_alg_mod, &
                                        only: compute_vert_quintic_coefficients_alg, &
                                              compute_vert_cubic_coefficients_alg
-    use ffsl_unity_transport_alg_mod,  only: ffsl_unity_transport_alg
+    use ffsl_unity_transport_alg_mod,  only: ffsl_unity_transport_alg,    &
+                                             ffsl_unity_swift_alg
     use split_w2_field_kernel_mod,     only: split_w2_field_kernel_type
     use transport_config_mod,          only: max_vert_cfl_calc,           &
                                              max_vert_cfl_calc_dep_point, &
@@ -282,6 +293,7 @@ contains
     type(r_tran_field_type)          :: detj_at_w2_transport
     type(r_tran_field_type)          :: lipschitz_horizontal
     type(r_tran_field_type)          :: lipschitz_vertical
+    type(r_tran_field_type)          :: remapped_unity, adv_unity_xy
     real(kind=r_tran)                :: cfl_min, cfl_max
     real(kind=r_tran)                :: dep_min, dep_max
     real(kind=r_tran)                :: h_cfl_min, h_cfl_max
@@ -294,10 +306,12 @@ contains
     logical(kind=l_def)              :: any_scheme_slice
     logical(kind=l_def)              :: any_hori_scheme_sl, any_vert_scheme_sl
     logical(kind=l_def)              :: any_reversible_sl
+    logical(kind=l_def)              :: any_advective_swift
     logical(kind=l_def)              :: any_consistent_swift
     logical(kind=l_def)              :: any_horz_dep_dist, any_vert_dep_dist
     logical(kind=l_def)              :: hermite_sl, vhv_split_sl
     logical(kind=l_def)              :: compute_cfl_dep
+    integer(kind=i_def)              :: remap_depth
 
     type(mesh_type),           pointer :: tmp_mesh => null()
     type(mesh_type),           pointer :: twod_mesh => null()
@@ -309,6 +323,7 @@ contains
     type(function_space_type), pointer :: w3_2d_fs => null()
     type(integer_field_type),  pointer :: face_selector_ew => null()
     type(integer_field_type),  pointer :: face_selector_ns => null()
+    type(r_tran_field_type),   pointer :: detj_at_w3 => null()
 
     ! r_tran type fields
     type(r_tran_field_type), target :: primal_wind_n
@@ -351,6 +366,7 @@ contains
     any_hori_scheme_sl = check_any_hori_scheme_sl()
     any_vert_scheme_sl = check_any_vert_scheme_sl()
     any_wind_shifted = check_wind_shifted()
+    any_advective_swift = check_any_advective_swift()
     any_consistent_swift = check_any_consistent_swift()
     compute_cfl_dep = ((any_scheme_mol .or. log_level() <= LOG_LEVEL_INFO) &
                        .and. max_vert_cfl_calc == max_vert_cfl_calc_dep_point)
@@ -392,17 +408,28 @@ contains
                 self%dep_dist_z_half_w2(self%n_meshes),         &
                 self%dep_dist_xy_w2(self%n_meshes),             &
                 self%dep_dist_xy_half_w2(self%n_meshes),        &
+                self%dep_dist_oxy_w2(self%n_meshes),            &
+                self%dep_dist_oxy_half_w2(self%n_meshes),       &
                 self%frac_wind_z(self%n_meshes),                &
                 self%frac_wind_z_half(self%n_meshes),           &
                 self%frac_wind_xy(self%n_meshes),               &
                 self%frac_wind_xy_half(self%n_meshes),          &
+                self%frac_wind_oxy(self%n_meshes),              &
+                self%frac_wind_oxy_half(self%n_meshes),         &
                 self%dep_stencil_extent_xy(self%n_meshes),      &
+                self%dep_stencil_extent_oxy(self%n_meshes),     &
                 self%adv_unity_x(self%n_meshes),                &
                 self%adv_unity_y(self%n_meshes),                &
                 self%adv_unity_z(self%n_meshes),                &
                 self%adv_unity_half_x(self%n_meshes),           &
                 self%adv_unity_half_y(self%n_meshes),           &
                 self%adv_unity_half_z(self%n_meshes),           &
+                self%adv_detj_x(self%n_meshes),                 &
+                self%adv_detj_y(self%n_meshes),                 &
+                self%adv_detj_xy(self%n_meshes),                &
+                self%adv_detj_x_half(self%n_meshes),            &
+                self%adv_detj_y_half(self%n_meshes),            &
+                self%adv_detj_xy_half(self%n_meshes),           &
                 self%vert_cubic_coef(self%n_meshes,4,4),        &
                 self%vert_cubic_index(self%n_meshes,4,4),       &
                 self%vert_quintic_coef(self%n_meshes,2,6),      &
@@ -482,15 +509,25 @@ contains
         end if
 
         if (any_splitting_hvh) then
-          call self%adv_unity_half_x(mesh_idx)%initialise( w3_fs )
-          call self%adv_unity_half_y(mesh_idx)%initialise( w3_fs )
+          call self%adv_unity_half_x(mesh_idx)%initialise( w3_fs, halo_depth = tmp_mesh%get_halo_depth() )
+          call self%adv_unity_half_y(mesh_idx)%initialise( w3_fs, halo_depth = tmp_mesh%get_halo_depth() )
+          call self%adv_detj_x_half(mesh_idx)%initialise( w3_fs, halo_depth = tmp_mesh%get_halo_depth() )
+          call self%adv_detj_y_half(mesh_idx)%initialise( w3_fs, halo_depth = tmp_mesh%get_halo_depth() )
+          call self%adv_detj_xy_half(mesh_idx)%initialise( w3_fs, halo_depth = tmp_mesh%get_halo_depth() )
           call self%dep_dist_xy_half_w2(mesh_idx)%initialise( w2h_fs )
           call self%frac_wind_xy_half(mesh_idx)%initialise( w2h_fs )
+          call self%dep_dist_oxy_half_w2(mesh_idx)%initialise( w2h_fs )
+          call self%frac_wind_oxy_half(mesh_idx)%initialise( w2h_fs )
         else
-          call self%adv_unity_x(mesh_idx)%initialise( w3_fs )
-          call self%adv_unity_y(mesh_idx)%initialise( w3_fs )
+          call self%adv_unity_x(mesh_idx)%initialise( w3_fs, halo_depth = tmp_mesh%get_halo_depth() )
+          call self%adv_unity_y(mesh_idx)%initialise( w3_fs, halo_depth = tmp_mesh%get_halo_depth() )
+          call self%adv_detj_x(mesh_idx)%initialise( w3_fs, halo_depth = tmp_mesh%get_halo_depth() )
+          call self%adv_detj_y(mesh_idx)%initialise( w3_fs, halo_depth = tmp_mesh%get_halo_depth() )
+          call self%adv_detj_xy(mesh_idx)%initialise( w3_fs, halo_depth = tmp_mesh%get_halo_depth() )
           call self%dep_dist_xy_w2(mesh_idx)%initialise( w2h_fs )
           call self%frac_wind_xy(mesh_idx)%initialise( w2h_fs )
+          call self%dep_dist_oxy_w2(mesh_idx)%initialise( w2h_fs )
+          call self%frac_wind_oxy(mesh_idx)%initialise( w2h_fs )
         end if
 
       end if
@@ -746,23 +783,139 @@ contains
       ! For FFSL schemes we require the transport of a unity field to get
       ! the advective FFSL transport
       if (any_scheme_ffsl) then
-        call ffsl_unity_transport_alg( self%dep_dist_xy_w2(mesh_idx),          &
-                                       self%dep_dist_xy_half_w2(mesh_idx),     &
-                                       self%dep_dist_z_w2(mesh_idx),           &
-                                       self%dep_dist_z_half_w2(mesh_idx),      &
-                                       self%frac_wind_xy(mesh_idx),            &
-                                       self%frac_wind_xy_half(mesh_idx),       &
-                                       self%frac_wind_z(mesh_idx),             &
-                                       self%frac_wind_z_half(mesh_idx),        &
-                                       self%dep_stencil_extent_xy(mesh_idx),   &
-                                       cast_dt,                                &
-                                       tmp_mesh,                               &
-                                       self%adv_unity_x(mesh_idx),             &
-                                       self%adv_unity_y(mesh_idx),             &
-                                       self%adv_unity_z(mesh_idx),             &
-                                       self%adv_unity_half_x(mesh_idx),        &
-                                       self%adv_unity_half_y(mesh_idx),        &
-                                       self%adv_unity_half_z(mesh_idx) )
+        call ffsl_unity_transport_alg(                                         &
+                                    self%horizontal_advecting_wind(mesh_idx),  &
+                                    self%vertical_advecting_wind(mesh_idx),    &
+                                    cast_dt,                                   &
+                                    tmp_mesh,                                  &
+                                    self%adv_unity_x(mesh_idx),                &
+                                    self%adv_unity_y(mesh_idx),                &
+                                    self%adv_unity_z(mesh_idx),                &
+                                    self%adv_unity_half_x(mesh_idx),           &
+                                    self%adv_unity_half_y(mesh_idx),           &
+                                    self%adv_unity_half_z(mesh_idx) )
+
+        ! Compute volume fields ("detj") transported in each direction ---------
+        ! Can't calculate the following quantities in FFSL unity alg, as they
+        ! require the extended mesh remapping, which currently requires this
+        ! algorithm, so creating a circular dependency
+        if (any_horz_dep_dist .and. any_advective_swift) then
+          detj_at_w3 => get_detj_at_w3_r_tran(tmp_mesh%get_id())
+          if (any_splitting_hvh) then
+            if (extended_mesh) then
+              remap_depth = get_required_stencil_depth()
+              call remapped_unity%initialise( self%adv_unity_half_x(mesh_idx)%get_function_space() )
+              call invoke( setval_X(remapped_unity, self%adv_unity_half_x(mesh_idx)) )
+              call self%remap_on_extended_mesh(self%adv_unity_half_x(mesh_idx), &
+                                               remapped_unity,                  &
+                                               self%rho_monotone_remap,         &
+                                               self%rho_enforce_minvalue,       &
+                                               self%rho_minvalue, remap_depth)
+              call invoke_deep_X_times_Y(self%adv_detj_x_half(mesh_idx),     &
+                                        self%adv_unity_half_x(mesh_idx), detj_at_w3)
+
+              call invoke( setval_X(remapped_unity, self%adv_unity_half_y(mesh_idx)) )
+              call self%remap_on_extended_mesh(self%adv_unity_half_y(mesh_idx), &
+                                               remapped_unity,                  &
+                                               self%rho_monotone_remap,         &
+                                               self%rho_enforce_minvalue,       &
+                                               self%rho_minvalue, remap_depth)
+              call invoke_deep_X_times_Y(self%adv_detj_y_half(mesh_idx),     &
+                                         self%adv_unity_half_y(mesh_idx), detj_at_w3)
+            else
+              call invoke( X_times_Y(self%adv_detj_x_half(mesh_idx),         &
+                                     self%adv_unity_half_x(mesh_idx),          &
+                                     detj_at_w3),                              &
+                           X_times_Y(self%adv_detj_y_half(mesh_idx),         &
+                                     self%adv_unity_half_y(mesh_idx),          &
+                                     detj_at_w3) )
+            end if
+          else
+            if (extended_mesh) then
+              remap_depth = get_required_stencil_depth()
+              call remapped_unity%initialise( self%adv_unity_x(mesh_idx)%get_function_space() )
+              call invoke( setval_X(remapped_unity, self%adv_unity_x(mesh_idx)) )
+              call self%remap_on_extended_mesh(self%adv_unity_x(mesh_idx),     &
+                                               remapped_unity,                 &
+                                               self%rho_monotone_remap,        &
+                                               self%rho_enforce_minvalue,      &
+                                               self%rho_minvalue, remap_depth)
+              call invoke_deep_X_times_Y(self%adv_detj_x(mesh_idx),            &
+                                         self%adv_unity_x(mesh_idx), detj_at_w3)
+
+              call invoke( setval_X(remapped_unity, self%adv_unity_y(mesh_idx)) )
+              call self%remap_on_extended_mesh(self%adv_unity_y(mesh_idx),     &
+                                               remapped_unity,                 &
+                                               self%rho_monotone_remap,        &
+                                               self%rho_enforce_minvalue,      &
+                                               self%rho_minvalue, remap_depth)
+              call invoke_deep_X_times_Y(self%adv_detj_y(mesh_idx),            &
+                                         self%adv_unity_y(mesh_idx), detj_at_w3)
+            else
+              call invoke( X_times_Y(self%adv_detj_x(mesh_idx),                &
+                                     self%adv_unity_x(mesh_idx),               &
+                                     detj_at_w3),                              &
+                           X_times_Y(self%adv_detj_y(mesh_idx),                &
+                                     self%adv_unity_y(mesh_idx),               &
+                                     detj_at_w3) )
+            end if
+          end if
+          ! Compute quantities for outer SWIFT step
+          call adv_unity_xy%initialise( detj_at_w3%get_function_space() )
+          if (any_splitting_hvh) then
+            call ffsl_unity_swift_alg(                                         &
+                                    adv_unity_xy,                              &
+                                    self%dep_dist_oxy_half_w2(mesh_idx),       &
+                                    self%frac_wind_oxy_half(mesh_idx),         &
+                                    self%dep_stencil_extent_oxy(mesh_idx),     &
+                                    self%horizontal_advecting_wind(mesh_idx),  &
+                                    self%adv_detj_x_half(mesh_idx),            &
+                                    self%adv_detj_y_half(mesh_idx),            &
+                                    dep_pt_stencil_extent,                     &
+                                    half_dt)
+          else
+            call ffsl_unity_swift_alg(                                         &
+                                    adv_unity_xy,                              &
+                                    self%dep_dist_oxy_w2(mesh_idx),            &
+                                    self%frac_wind_oxy(mesh_idx),              &
+                                    self%dep_stencil_extent_oxy(mesh_idx),     &
+                                    self%horizontal_advecting_wind(mesh_idx),  &
+                                    self%adv_detj_x(mesh_idx),                 &
+                                    self%adv_detj_y(mesh_idx),                 &
+                                    dep_pt_stencil_extent,                     &
+                                    cast_dt)
+          end if
+          ! Compute updated volumes (adv_detj_xy)
+          if (any_splitting_hvh) then
+            if (extended_mesh) then
+              remap_depth = self%dep_stencil_extent_oxy(mesh_idx) &
+                          + 2_i_def + max(inner_order, outer_order)
+              call self%remap_on_extended_mesh(remapped_unity, adv_unity_xy,   &
+                                               self%rho_monotone_remap,        &
+                                               self%rho_enforce_minvalue,      &
+                                               self%rho_minvalue, remap_depth)
+              call invoke_deep_X_times_Y(self%adv_detj_xy_half(mesh_idx),      &
+                                         remapped_unity, detj_at_w3)
+            else
+              call invoke( X_times_Y(self%adv_detj_xy_half(mesh_idx),          &
+                                     adv_unity_xy, detj_at_w3) )
+            end if
+          else
+            if (extended_mesh) then
+              remap_depth = self%dep_stencil_extent_oxy(mesh_idx) &
+                          + 2_i_def + max(inner_order, outer_order)
+              call self%remap_on_extended_mesh(remapped_unity, adv_unity_xy,   &
+                                               self%rho_monotone_remap,        &
+                                               self%rho_enforce_minvalue,      &
+                                               self%rho_minvalue, remap_depth)
+              call invoke_deep_X_times_Y(self%adv_detj_xy(mesh_idx),           &
+                                         remapped_unity, detj_at_w3)
+            else
+              call invoke( X_times_Y(self%adv_detj_xy(mesh_idx),               &
+                                     adv_unity_xy, detj_at_w3) )
+            end if
+          end if
+        end if
       end if
 
       !==========================================================================!
@@ -922,17 +1075,27 @@ contains
     if ( allocated( self%vertical_advecting_wind ) )   deallocate( self%vertical_advecting_wind )
     if ( allocated( self%dep_dist_xy_w2 ) )            deallocate( self%dep_dist_xy_w2 )
     if ( allocated( self%dep_dist_xy_half_w2 ) )       deallocate( self%dep_dist_xy_half_w2 )
+    if ( allocated( self%dep_dist_oxy_w2 ) )           deallocate( self%dep_dist_oxy_w2 )
+    if ( allocated( self%dep_dist_oxy_half_w2 ) )      deallocate( self%dep_dist_oxy_half_w2 )
     if ( allocated( self%dep_dist_z_w2 ) )             deallocate( self%dep_dist_z_w2 )
     if ( allocated( self%frac_wind_z ) )               deallocate( self%frac_wind_z )
     if ( allocated( self%frac_wind_z_half ) )          deallocate( self%frac_wind_z_half )
     if ( allocated( self%frac_wind_xy ) )              deallocate( self%frac_wind_xy )
     if ( allocated( self%frac_wind_xy_half ) )         deallocate( self%frac_wind_xy_half )
+    if ( allocated( self%frac_wind_oxy ) )             deallocate( self%frac_wind_oxy )
+    if ( allocated( self%frac_wind_oxy_half ) )        deallocate( self%frac_wind_oxy_half )
     if ( allocated( self%adv_unity_x ) )               deallocate( self%adv_unity_x )
     if ( allocated( self%adv_unity_y ) )               deallocate( self%adv_unity_y )
     if ( allocated( self%adv_unity_z ) )               deallocate( self%adv_unity_z )
     if ( allocated( self%adv_unity_half_x ) )          deallocate( self%adv_unity_half_x )
     if ( allocated( self%adv_unity_half_y ) )          deallocate( self%adv_unity_half_y )
     if ( allocated( self%adv_unity_half_z ) )          deallocate( self%adv_unity_half_z )
+    if ( allocated( self%adv_detj_x ) )                deallocate( self%adv_detj_x )
+    if ( allocated( self%adv_detj_y ) )                deallocate( self%adv_detj_y )
+    if ( allocated( self%adv_detj_xy ) )               deallocate( self%adv_detj_xy )
+    if ( allocated( self%adv_detj_x_half ) )           deallocate( self%adv_detj_x_half )
+    if ( allocated( self%adv_detj_y_half ) )           deallocate( self%adv_detj_y_half )
+    if ( allocated( self%adv_detj_xy_half ) )          deallocate( self%adv_detj_xy_half )
     if ( allocated( self%vert_cubic_coef ) )           deallocate( self%vert_cubic_coef )
     if ( allocated( self%vert_cubic_index ) )          deallocate( self%vert_cubic_index )
     if ( allocated( self%vert_quintic_coef ) )         deallocate( self%vert_quintic_coef )
@@ -955,6 +1118,8 @@ contains
     if ( allocated( self%dry_frac_flux_z ) )           deallocate( self%dry_frac_flux_z )
     if ( allocated( self%tracer_stencil_extent_ixy ) ) deallocate( self%tracer_stencil_extent_ixy )
     if ( allocated( self%tracer_stencil_extent_oxy ) ) deallocate( self%tracer_stencil_extent_oxy )
+    if ( allocated( self%dep_stencil_extent_xy ) )     deallocate( self%dep_stencil_extent_xy )
+    if ( allocated( self%dep_stencil_extent_oxy ) )    deallocate( self%dep_stencil_extent_oxy )
 
   end subroutine destroy_transport_runtime
 
@@ -1037,7 +1202,7 @@ contains
         ! For consistent transport the cfl may be slightly higher than expected
         ! due to using the dry mass flux to compute departure points, therefore
         ! an extra + 1 is added to remap_depth for safety
-        remap_depth = self%get_dep_stencil_extent_xy(self%mesh_ids(1)) &
+        remap_depth = self%get_dep_stencil_extent_xy(self%mesh_ids(1), .false.) &
                     + 2_i_def + max(inner_order, outer_order)
       end if
       call self%remap_on_extended_mesh(self%rho_d(1,step), rho_d, &
@@ -1305,7 +1470,7 @@ contains
             ! TODO: we should be able to get away with not doing all of these
             ! remappings, based on the direction and last step
             ! Restrict, then remap
-            remap_depth = self%get_dep_stencil_extent_xy(self%mesh_ids(1)) &
+            remap_depth = self%get_dep_stencil_extent_xy(self%mesh_ids(1), .false.) &
                         + 2_i_def + max(inner_order, outer_order)
           end if
           ! Restrict and remap rho
@@ -2015,28 +2180,35 @@ contains
   end function get_vertical_advecting_wind
 
   !> @brief Returns a pointer to the horizontal departure distances at W2h DoFs
-  !> @param[in] mesh_id The ID of the mesh to get the object for
-  !> @param[in] strang  Logical for whether to return Strang split points
+  !> @param[in] mesh_id     The ID of the mesh to get the object for
+  !> @param[in] strang      Logical for whether to return Strang split points
+  !> @param[in] outer_step  Logical for whether to return points for outer step
   !> @return The departure distances at W2h DoFs
-  function get_dep_dist_xy_w2(self, mesh_id, strang) result(dep_dist_xy_w2)
+  function get_dep_dist_xy_w2(self, mesh_id, strang, outer_step) result(dep_dist_xy_w2)
 
     implicit none
 
     class(transport_runtime_type), target, intent(in) :: self
     integer(kind=i_def),                   intent(in) :: mesh_id
     logical(kind=l_def),                   intent(in) :: strang
+    logical(kind=l_def),                   intent(in) :: outer_step
     type(r_tran_field_type),               pointer    :: dep_dist_xy_w2
     character(str_def)                                :: field_name
 
     field_name = 'dep_dist_xy_w2'
-    if (strang) then
+    if (strang .and. outer_step) then
+      dep_dist_xy_w2 => self%dep_dist_oxy_half_w2(self%idx_from_mesh_id(mesh_id))
+    else if (strang) then
       dep_dist_xy_w2 => self%dep_dist_xy_half_w2(self%idx_from_mesh_id(mesh_id))
+    else if (outer_step) then
+      dep_dist_xy_w2 => self%dep_dist_oxy_w2(self%idx_from_mesh_id(mesh_id))
     else
       dep_dist_xy_w2 => self%dep_dist_xy_w2(self%idx_from_mesh_id(mesh_id))
     end if
     call check_initialised_field(dep_dist_xy_w2, field_name, mesh_id)
 
   end function get_dep_dist_xy_w2
+
 
   !> @brief Returns a pointer to the z departure distances at W2v DoFs
   !> @param[in] mesh_id The ID of the mesh to get the object for
@@ -2052,7 +2224,7 @@ contains
     type(r_tran_field_type),               pointer    :: dep_dist_z_w2
     character(str_def)                                :: field_name
 
-    field_name = 'get_dep_dist_z_w2'
+    field_name = 'dep_dist_z_w2'
     if (strang) then
       dep_dist_z_w2 => self%dep_dist_z_half_w2(self%idx_from_mesh_id(mesh_id))
     else
@@ -2062,69 +2234,125 @@ contains
 
   end function get_dep_dist_z_w2
 
-  !> @brief Returns a pointer to the fractional vertical wind
+  !> @brief Returns a pointer to the detj_at_w3 field transported in x
   !> @param[in] mesh_id The ID of the mesh to get the object for
-  !> @return The fractional vertical wind at W2v DOFs
-  function get_frac_wind_z(self, mesh_id) result(frac_wind_z)
+  !> @param[in] strang  Logical for whether to return Strang split volume
+  !> @return The cell volume after transport in x
+  function get_adv_detj_x(self, mesh_id, strang) result(detj_at_w3)
 
     implicit none
 
     class(transport_runtime_type), target, intent(in) :: self
     integer(kind=i_def),                   intent(in) :: mesh_id
+    logical(kind=l_def),                   intent(in) :: strang
+    type(r_tran_field_type),               pointer    :: detj_at_w3
+    character(str_def)                                :: field_name
+
+    field_name = 'adv_detj_x'
+    if (strang) then
+      detj_at_w3 => self%adv_detj_x_half(self%idx_from_mesh_id(mesh_id))
+    else
+      detj_at_w3 => self%adv_detj_x(self%idx_from_mesh_id(mesh_id))
+    end if
+    call check_initialised_field(detj_at_w3, field_name, mesh_id)
+
+  end function get_adv_detj_x
+
+  !> @brief Returns a pointer to the detj_at_w3 field transported in y
+  !> @param[in] mesh_id The ID of the mesh to get the object for
+  !> @param[in] strang  Logical for whether to return Strang split volume
+  !> @return The cell volume after transport in y
+  function get_adv_detj_y(self, mesh_id, strang) result(detj_at_w3)
+
+    implicit none
+
+    class(transport_runtime_type), target, intent(in) :: self
+    integer(kind=i_def),                   intent(in) :: mesh_id
+    logical(kind=l_def),                   intent(in) :: strang
+    type(r_tran_field_type),               pointer    :: detj_at_w3
+    character(str_def)                                :: field_name
+
+    field_name = 'adv_detj_y'
+    if (strang) then
+      detj_at_w3 => self%adv_detj_y_half(self%idx_from_mesh_id(mesh_id))
+    else
+      detj_at_w3 => self%adv_detj_y(self%idx_from_mesh_id(mesh_id))
+    end if
+    call check_initialised_field(detj_at_w3, field_name, mesh_id)
+
+  end function get_adv_detj_y
+
+  !> @brief Returns a pointer to the detj_at_w3 field transported in x and y
+  !> @param[in] mesh_id The ID of the mesh to get the object for
+  !> @param[in] strang  Logical for whether to return Strang split volume
+  !> @return The cell volume after transport in x and y
+  function get_adv_detj_xy(self, mesh_id, strang) result(detj_at_w3)
+
+    implicit none
+
+    class(transport_runtime_type), target, intent(in) :: self
+    integer(kind=i_def),                   intent(in) :: mesh_id
+    logical(kind=l_def),                   intent(in) :: strang
+    type(r_tran_field_type),               pointer    :: detj_at_w3
+    character(str_def)                                :: field_name
+
+    field_name = 'adv_detj_xy'
+    if (strang) then
+      detj_at_w3 => self%adv_detj_xy_half(self%idx_from_mesh_id(mesh_id))
+    else
+      detj_at_w3 => self%adv_detj_xy(self%idx_from_mesh_id(mesh_id))
+    end if
+    call check_initialised_field(detj_at_w3, field_name, mesh_id)
+
+  end function get_adv_detj_xy
+
+  !> @brief Returns a pointer to the fractional vertical wind
+  !> @param[in] mesh_id The ID of the mesh to get the object for
+  !> @param[in] strang  Logical as to whether to return VHV frac wind
+  !> @return The fractional vertical wind at W2v DOFs
+  function get_frac_wind_z(self, mesh_id, strang) result(frac_wind_z)
+
+    implicit none
+
+    class(transport_runtime_type), target, intent(in) :: self
+    integer(kind=i_def),                   intent(in) :: mesh_id
+    logical(kind=l_def),                   intent(in) :: strang
     type(r_tran_field_type),               pointer    :: frac_wind_z
 
-    frac_wind_z => self%frac_wind_z(self%idx_from_mesh_id(mesh_id))
+    if (strang) then
+      frac_wind_z => self%frac_wind_z_half(self%idx_from_mesh_id(mesh_id))
+    else
+      frac_wind_z => self%frac_wind_z(self%idx_from_mesh_id(mesh_id))
+    end if
 
   end function get_frac_wind_z
 
-  !> @brief Returns a pointer to the fractional vertical wind computed
-  !!        using half departure points and time step for the half steps
-  !!        of Strang splitting
-  !> @param[in] mesh_id The ID of the mesh to get the object for
-  !> @return The fractional vertical wind at W2v DOFs
-  function get_frac_wind_z_half(self, mesh_id) result(frac_wind_z_half)
-
-    implicit none
-
-    class(transport_runtime_type), target, intent(in) :: self
-    integer(kind=i_def),                   intent(in) :: mesh_id
-    type(r_tran_field_type),               pointer    :: frac_wind_z_half
-
-    frac_wind_z_half => self%frac_wind_z_half(self%idx_from_mesh_id(mesh_id))
-
-  end function get_frac_wind_z_half
-
   !> @brief Returns a pointer to the fractional horizontal wind flux
-  !> @param[in] mesh_id The ID of the mesh to get the object for
+  !> @param[in] mesh_id     The ID of the mesh to get the object for
+  !> @param[in] strang      Logical for whether values are from HVH splitting
+  !> @param[in] outer_step  Logical for whether wind is from outer step
   !> @return The fractional wind flux at W2h DOFs
-  function get_frac_wind_xy(self, mesh_id) result(frac_wind_xy)
+  function get_frac_wind_xy(self, mesh_id, strang, outer_step) result(frac_wind_xy)
 
     implicit none
 
     class(transport_runtime_type), target, intent(in) :: self
     integer(kind=i_def),                   intent(in) :: mesh_id
+    logical(kind=l_def),                   intent(in) :: strang
+    logical(kind=l_def),                   intent(in) :: outer_step
     type(r_tran_field_type),               pointer    :: frac_wind_xy
 
-    frac_wind_xy => self%frac_wind_xy(self%idx_from_mesh_id(mesh_id))
+    if (strang .and. outer_step) then
+      frac_wind_xy => self%frac_wind_oxy_half(self%idx_from_mesh_id(mesh_id))
+    else if (strang) then
+      frac_wind_xy => self%frac_wind_xy_half(self%idx_from_mesh_id(mesh_id))
+    else if (outer_step) then
+      frac_wind_xy => self%frac_wind_oxy(self%idx_from_mesh_id(mesh_id))
+    else
+      frac_wind_xy => self%frac_wind_xy(self%idx_from_mesh_id(mesh_id))
+    end if
 
   end function get_frac_wind_xy
-
-  !> @brief Returns a pointer to the fractional horizontal wind flux
-  !!        computed using half departure points and time step for
-  !!        the half steps of Strang splitting
-  !> @param[in] mesh_id The ID of the mesh to get the object for
-  !> @return The half fractional wind flux at W2h DOFs
-  function get_frac_wind_xy_half(self, mesh_id) result(frac_wind_xy_half)
-
-    implicit none
-
-    class(transport_runtime_type), target, intent(in) :: self
-    integer(kind=i_def),                   intent(in) :: mesh_id
-    type(r_tran_field_type),               pointer    :: frac_wind_xy_half
-
-    frac_wind_xy_half => self%frac_wind_xy_half(self%idx_from_mesh_id(mesh_id))
-
-  end function get_frac_wind_xy_half
 
   !> @brief Returns a pointer to the consistent tracer departure points
   !> @param[in] mesh_id      The ID of the mesh to get the object for
@@ -2224,111 +2452,77 @@ contains
 
   !> @brief Returns a pointer to the transport of unity in x
   !> @param[in] mesh_id The ID of the mesh to get the object for
+  !> @param[in] strang  Logical for whether values are from Strang splitting
   !> @return The update of transport of unity in x
-  function get_adv_unity_x(self, mesh_id) result(adv_unity_x)
+  function get_adv_unity_x(self, mesh_id, strang) result(adv_unity_x)
 
     implicit none
 
     class(transport_runtime_type), target, intent(in) :: self
     integer(kind=i_def),                   intent(in) :: mesh_id
+    logical(kind=l_def),                   intent(in) :: strang
     type(r_tran_field_type),               pointer    :: adv_unity_x
     character(str_def)                                :: field_name
 
     field_name = 'adv_unity_x'
-    adv_unity_x => self%adv_unity_x(self%idx_from_mesh_id(mesh_id))
+    if (strang) then
+      adv_unity_x => self%adv_unity_half_x(self%idx_from_mesh_id(mesh_id))
+    else
+      adv_unity_x => self%adv_unity_x(self%idx_from_mesh_id(mesh_id))
+    end if
     call check_initialised_field(adv_unity_x, field_name, mesh_id)
 
   end function get_adv_unity_x
 
   !> @brief Returns a pointer to the transport of unity in y
   !> @param[in] mesh_id The ID of the mesh to get the object for
+  !> @param[in] strang  Logical for whether values are from Strang splitting
   !> @return The update of transport of unity in y
-  function get_adv_unity_y(self, mesh_id) result(adv_unity_y)
+  function get_adv_unity_y(self, mesh_id, strang) result(adv_unity_y)
 
     implicit none
 
     class(transport_runtime_type), target, intent(in) :: self
     integer(kind=i_def),                   intent(in) :: mesh_id
+    logical(kind=l_def),                   intent(in) :: strang
     type(r_tran_field_type),               pointer    :: adv_unity_y
     character(str_def)                                :: field_name
 
     field_name = 'adv_unity_y'
-    adv_unity_y => self%adv_unity_y(self%idx_from_mesh_id(mesh_id))
+    if (strang) then
+      adv_unity_y => self%adv_unity_half_y(self%idx_from_mesh_id(mesh_id))
+    else
+      adv_unity_y => self%adv_unity_y(self%idx_from_mesh_id(mesh_id))
+    end if
     call check_initialised_field(adv_unity_y, field_name, mesh_id)
 
   end function get_adv_unity_y
 
+
   !> @brief Returns a pointer to the transport of unity in z
   !> @param[in] mesh_id The ID of the mesh to get the object for
+  !> @param[in] strang  Logical for whether values are from Strang splitting
   !> @return The update of transport of unity in z
-  function get_adv_unity_z(self, mesh_id) result(adv_unity_z)
+  function get_adv_unity_z(self, mesh_id, strang) result(adv_unity_z)
 
     implicit none
 
     class(transport_runtime_type), target, intent(in) :: self
     integer(kind=i_def),                   intent(in) :: mesh_id
+    logical(kind=l_def),                   intent(in) :: strang
     type(r_tran_field_type),               pointer    :: adv_unity_z
     character(str_def)                                :: field_name
 
     field_name = 'adv_unity_z'
-    adv_unity_z => self%adv_unity_z(self%idx_from_mesh_id(mesh_id))
+    if (strang) then
+      adv_unity_z => self%adv_unity_half_z(self%idx_from_mesh_id(mesh_id))
+    else
+      adv_unity_z => self%adv_unity_z(self%idx_from_mesh_id(mesh_id))
+    end if
     call check_initialised_field(adv_unity_z, field_name, mesh_id)
 
   end function get_adv_unity_z
 
-  !> @brief Returns a pointer to the half time step transport of unity in x
-  !> @param[in] mesh_id The ID of the mesh to get the object for
-  !> @return The update of half time step transport of unity in x
-  function get_adv_unity_half_x(self, mesh_id) result(adv_unity_half_x)
-
-    implicit none
-
-    class(transport_runtime_type), target, intent(in) :: self
-    integer(kind=i_def),                   intent(in) :: mesh_id
-    type(r_tran_field_type),               pointer    :: adv_unity_half_x
-    character(str_def)                                :: field_name
-
-    field_name = 'adv_unity_half_x'
-    adv_unity_half_x => self%adv_unity_half_x(self%idx_from_mesh_id(mesh_id))
-    call check_initialised_field(adv_unity_half_x, field_name, mesh_id)
-
-  end function get_adv_unity_half_x
-
-  !> @brief Returns a pointer to the half time step transport of unity in y
-  !> @param[in] mesh_id The ID of the mesh to get the object for
-  !> @return The update of half time step transport of unity in y
-  function get_adv_unity_half_y(self, mesh_id) result(adv_unity_half_y)
-
-    implicit none
-
-    class(transport_runtime_type), target, intent(in) :: self
-    integer(kind=i_def),                   intent(in) :: mesh_id
-    type(r_tran_field_type),               pointer    :: adv_unity_half_y
-    character(str_def)                                :: field_name
-
-    field_name = 'adv_unity_half_y'
-    adv_unity_half_y => self%adv_unity_half_y(self%idx_from_mesh_id(mesh_id))
-    call check_initialised_field(adv_unity_half_y, field_name, mesh_id)
-
-  end function get_adv_unity_half_y
-
-  !> @brief Returns a pointer to the half time step transport of unity in z
-  !> @param[in] mesh_id The ID of the mesh to get the object for
-  !> @return The update of half time step transport of unity in z
-  function get_adv_unity_half_z(self, mesh_id) result(adv_unity_half_z)
-
-    implicit none
-
-    class(transport_runtime_type), target, intent(in) :: self
-    integer(kind=i_def),                   intent(in) :: mesh_id
-    type(r_tran_field_type),               pointer    :: adv_unity_half_z
-    character(str_def)                                :: field_name
-
-    field_name = 'adv_unity_half_z'
-    adv_unity_half_z => self%adv_unity_half_z(self%idx_from_mesh_id(mesh_id))
-    call check_initialised_field(adv_unity_half_z, field_name, mesh_id)
-
-  end function get_adv_unity_half_z
 
   !> @brief Returns a pointer to the vertical interpolation coefficients
   !!        for semi-Lagrangian transport of a W3 or Wtheta field
@@ -2456,17 +2650,23 @@ contains
 
   !> @brief Returns a pointer to required stencil size for FFSL transport
   !!        based on the maximum horizontal departure distance
-  !> @param[in] mesh_id The ID of the mesh to get the object for
+  !> @param[in] mesh_id     The ID of the mesh to get the object for
+  !> @param[in] outer_step  Logical indicating whether to return value for outer step
   !> @return The required stencil depth
-  function get_dep_stencil_extent_xy(self, mesh_id) result(dep_stencil_extent_xy)
+  function get_dep_stencil_extent_xy(self, mesh_id, outer_step) result(dep_stencil_extent_xy)
 
     implicit none
 
     class(transport_runtime_type), target, intent(in) :: self
     integer(kind=i_def),                   intent(in) :: mesh_id
+    logical(kind=l_def),                   intent(in) :: outer_step
     integer(kind=i_def),                   pointer    :: dep_stencil_extent_xy
 
-    dep_stencil_extent_xy => self%dep_stencil_extent_xy(self%idx_from_mesh_id(mesh_id))
+    if (outer_step) then
+      dep_stencil_extent_xy => self%dep_stencil_extent_oxy(self%idx_from_mesh_id(mesh_id))
+    else
+      dep_stencil_extent_xy => self%dep_stencil_extent_xy(self%idx_from_mesh_id(mesh_id))
+    end if
 
   end function get_dep_stencil_extent_xy
 

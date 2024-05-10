@@ -17,7 +17,7 @@ module transport_metadata_test
                                              horizontal_monotone_none,     &
                                              vertical_monotone_none,       &
                                              vertical_monotone_order_high, &
-                                             consistent_ffsl_splitting_swift
+                                             ffsl_splitting_swift
   use transport_metadata_mod,         only : transport_metadata_type
   use pFUnit_Mod
 
@@ -82,7 +82,7 @@ contains
     logical(kind=l_def)           :: logspace = .true.
     real(kind=r_tran)             :: min_value = 1.9_r_tran
     logical(kind=l_def)           :: reversible = .false.
-    integer(kind=i_def)           :: consistent_ffsl_splitting = consistent_ffsl_splitting_swift
+    integer(kind=i_def)           :: ffsl_splitting = ffsl_splitting_swift
     type(transport_metadata_type) :: our_metadata
 
 
@@ -100,7 +100,7 @@ contains
                                            min_value,               &
                                            logspace,                &
                                            reversible,              &
-                                           consistent_ffsl_splitting)
+                                           ffsl_splitting)
 
     ! Check all properties of metadata object
     @assertEqual(fname, our_metadata%get_name())
@@ -115,7 +115,7 @@ contains
     @assertEqual(enforce_min_value, our_metadata%get_enforce_min_value())
     @assertEqual(min_value, our_metadata%get_min_value())
     @assertEqual(logspace, our_metadata%get_log_space())
-    @assertEqual(consistent_ffsl_splitting, our_metadata%get_consistent_ffsl_splitting())
+    @assertEqual(ffsl_splitting, our_metadata%get_ffsl_splitting())
 
   end subroutine test_all
 

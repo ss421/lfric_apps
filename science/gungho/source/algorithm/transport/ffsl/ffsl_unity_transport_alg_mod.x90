@@ -17,33 +17,38 @@
 !!          directly calls the FFSL kernels.
 module ffsl_unity_transport_alg_mod
 
+  use base_mesh_config_mod,             only: topology, geometry,      &
+                                              topology_fully_periodic, &
+                                              geometry_spherical
   use check_configuration_mod,          only: check_horz_dep_pts,      &
                                               check_vert_dep_pts,      &
                                               check_any_splitting_vhv, &
                                               check_any_splitting_hvh, &
                                               get_required_stencil_depth
   use constants_mod,                    only: r_tran, i_def, l_def
+  use departure_points_config_mod,      only: horizontal_limit, &
+                                              horizontal_limit_cap
   use fem_constants_mod,                only: get_inverse_w3_mass_matrix, &
                                               get_detj_at_w3_r_tran
-  use ffsl_flux_xy_kernel_mod,          only: ffsl_flux_xy_kernel_type
-  use ffsl_flux_z_constant_kernel_mod,  only: ffsl_flux_z_constant_kernel_type
+  use field_minmax_alg_mod,             only: get_field_minmax
   use field_mod,                        only: field_type
-  use flux_direction_mod,               only: x_direction, y_direction
   use fs_continuity_mod,                only: W3, W2H
   use function_space_mod,               only: function_space_type
   use function_space_collection_mod,    only: function_space_collection
   use fv_divergence_x_kernel_mod,       only: fv_divergence_x_kernel_type
   use fv_divergence_y_kernel_mod,       only: fv_divergence_y_kernel_type
   use fv_divergence_z_kernel_mod,       only: fv_divergence_z_kernel_type
+  use fv_divergence_2d_kernel_mod,      only: fv_divergence_2d_kernel_type
   use geometric_constants_mod,          only: get_face_selector_ew, &
-                                              get_face_selector_ns
+                                              get_face_selector_ns, &
+                                              get_panel_id
+  use hori_dep_dist_ffsl_kernel_mod,    only: hori_dep_dist_ffsl_kernel_type
   use integer_field_mod,                only: integer_field_type
   use io_config_mod,                    only: subroutine_timers
   use mesh_mod,                         only: mesh_type
   use mesh_collection_mod,              only: mesh_collection
+  use psykal_lite_transport_mod,        only: invoke_ffsl_panel_swap_kernel_type
   use r_tran_field_mod,                 only: r_tran_field_type
-  use transport_enumerated_types_mod,   only: horizontal_monotone_none, &
-                                              vertical_monotone_none
   use timer_mod,                        only: timer
 
   implicit none
@@ -52,6 +57,7 @@ module ffsl_unity_transport_alg_mod
 
   public :: ffsl_unity_transport_alg
   public :: ffsl_vert_unity_transport_alg
+  public :: ffsl_unity_swift_alg
 
 contains
 
@@ -63,15 +69,8 @@ contains
   !!          The unity transport is performed using half departure points if
   !!          any of the schemes use Strang splitting.
   !!
-  !> @param[in]     dep_dist_xy       Horizontal departure distance
-  !> @param[in]     dep_dist_xy_half  Horizontal departure distance with dt/2
-  !> @param[in]     dep_dist_z        Departure distance in z
-  !> @param[in]     dep_dist_z_half   Departure distance in z with dt/2
-  !> @param[in]     frac_wind_xy      Horizontal fractional wind
-  !> @param[in]     frac_wind_xy_half Horizontal fractional wind with dt/2
-  !> @param[in]     frac_wind_z       Vertical fractional wind
-  !> @param[in]     frac_wind_z_half  Vertical fractional wind with dt/2
-  !> @param[in]     dep_stencil_xy    Stencil extent due to departure points
+  !> @param[in]     hori_wind         Horizontal transporting wind
+  !> @param[in]     vert_wind         Vertical transporting wind
   !> @param[in]     dt                The model timestep length
   !> @param[in]     mesh              The mesh to compute the transport on
   !> @param[in,out] np1_x             Conservative transport of unity in x
@@ -83,15 +82,8 @@ contains
   !!                                  using half dt for Strang HVH splitting
   !> @param[in,out] np1_half_z        Conservative transport of unity in z
   !!                                  using half dt for Strang VHV splitting
-  subroutine ffsl_unity_transport_alg( dep_dist_xy,       &
-                                       dep_dist_xy_half,  &
-                                       dep_dist_z,        &
-                                       dep_dist_z_half,   &
-                                       frac_wind_xy,      &
-                                       frac_wind_xy_half, &
-                                       frac_wind_z,       &
-                                       frac_wind_z_half,  &
-                                       dep_stencil_xy,    &
+  subroutine ffsl_unity_transport_alg( hori_wind,         &
+                                       vert_wind,         &
                                        dt,                &
                                        mesh,              &
                                        np1_x,             &
@@ -104,15 +96,8 @@ contains
     implicit none
 
     ! Arguments ----------------------------------------------------------------
-    type(r_tran_field_type), intent(in)    :: dep_dist_xy
-    type(r_tran_field_type), intent(in)    :: dep_dist_z
-    type(r_tran_field_type), intent(in)    :: dep_dist_z_half
-    type(r_tran_field_type), intent(in)    :: dep_dist_xy_half
-    type(r_tran_field_type), intent(in)    :: frac_wind_xy
-    type(r_tran_field_type), intent(in)    :: frac_wind_xy_half
-    type(r_tran_field_type), intent(in)    :: frac_wind_z
-    type(r_tran_field_type), intent(in)    :: frac_wind_z_half
-    integer(kind=i_def),     intent(in)    :: dep_stencil_xy
+    type(r_tran_field_type), intent(in)    :: hori_wind
+    type(r_tran_field_type), intent(in)    :: vert_wind
     type(mesh_type),         intent(in)    :: mesh
     real(kind=r_tran),       intent(in)    :: dt
     type(r_tran_field_type), intent(inout) :: np1_x
@@ -124,37 +109,22 @@ contains
 
     ! Internal variables -------------------------------------------------------
     ! Pointers to existing objects
-    type(r_tran_field_type),  pointer :: detj_at_w3 => null()
-    type(r_tran_field_type),  pointer :: detj_at_w3_copy => null()
-    type(integer_field_type), pointer :: face_selector_ew => null()
-    type(integer_field_type), pointer :: face_selector_ns => null()
+    type(r_tran_field_type),   pointer :: detj_at_w3
 
     ! Function spaces and mesh
-    type(function_space_type), pointer :: field_fs => null()
-    type(function_space_type), pointer :: w2h_fs => null()
-    type(mesh_type),           pointer :: mesh_ptr => null()
-
-    ! Parameters for unity transport
-    integer(kind=i_def), parameter :: monotone = horizontal_monotone_none
-    integer(kind=i_def), parameter :: order = 0_i_def
+    type(function_space_type), pointer :: field_fs
+    type(mesh_type),           pointer :: mesh_ptr
 
     ! Unity fields, increments, and fluxes
     type(r_tran_field_type) :: inc_one_x
     type(r_tran_field_type) :: inc_one_y
-    type(r_tran_field_type) :: hori_flux
-
-    type(r_tran_field_type), target  :: ini_one
-    type(r_tran_field_type), pointer :: ini_one_copy => null()
+    type(r_tran_field_type) :: ini_one
 
     ! Half time step and flags for departure points
     integer(kind=i_def) :: mesh_id
     logical(kind=l_def) :: any_horz_dep_pts, any_vert_dep_pts
     logical(kind=l_def) :: any_splitting_vhv, any_splitting_hvh
-    integer(kind=i_def) :: stencil_extent_xy
-    integer(kind=i_def) :: cfl_stencil_xy
     real(kind=r_tran)   :: half_dt
-    logical(kind=l_def), parameter :: edges_treatment = .false.
-    integer(kind=i_def), parameter :: extra_points = 1_i_def
 
     if ( subroutine_timers ) call timer('transport.ffsl_unity')
 
@@ -162,10 +132,6 @@ contains
     mesh_id = mesh%get_id()
     half_dt = 0.5_r_tran * dt
     detj_at_w3 => get_detj_at_w3_r_tran(mesh_id)
-    face_selector_ew => get_face_selector_ew(mesh_id)
-    face_selector_ns => get_face_selector_ns(mesh_id)
-    ! Copy as Psyclone doesn't allow a field to be used twice as a kernel argument
-    detj_at_w3_copy => get_detj_at_w3_r_tran(mesh_id)
 
     ! Get function space
     ! To get compilers to be happy, need to pass a pointer as the mesh
@@ -181,44 +147,22 @@ contains
     ! Initialise fields
     call ini_one%initialise( vector_space = field_fs, &
                              halo_depth = get_required_stencil_depth() )
-    ini_one_copy => ini_one
 
     ! Check if we need increment of unity in x and y directions ----------------
     if (any_horz_dep_pts) then
-      w2h_fs => function_space_collection%get_fs(mesh_ptr, 0, W2H)
-
-      stencil_extent_xy = dep_stencil_xy + 1_i_def + order
-      cfl_stencil_xy = stencil_extent_xy
 
       call inc_one_x%initialise( vector_space = field_fs )
       call inc_one_y%initialise( vector_space = field_fs )
-      call hori_flux%initialise( vector_space = w2h_fs )
 
       if (any_splitting_hvh) then
         ! TODO #4160: this assumes that if any_splitting_hvh=.true.
         ! then all transport uses HVH splitting
         ! Set half unity field
         call invoke( setval_c(ini_one, 1.0_r_tran),                            &
-                     setval_c(ini_one_copy, 1.0_r_tran),                       &
-                     setval_c(hori_flux, 0.0_r_tran),                          &
-        ! compute unity fluxes -------------------------------------------------
-                     ffsl_flux_xy_kernel_type( hori_flux,                      &
-                                               ini_one, stencil_extent_xy,     &
-                                               detj_at_w3, stencil_extent_xy,  &
-                                               ini_one_copy,                   &
-                                               stencil_extent_xy,              &
-                                               detj_at_w3_copy,                &
-                                               stencil_extent_xy,              &
-                                               dep_dist_xy_half,               &
-                                               frac_wind_xy_half,              &
-                                               face_selector_ew,               &
-                                               face_selector_ns,               &
-                                               order, monotone,                &
-                                               cfl_stencil_xy, half_dt ),      &
         ! compute unity increments ---------------------------------------------
-                     fv_divergence_x_kernel_type(inc_one_x, hori_flux,         &
+                     fv_divergence_x_kernel_type(inc_one_x, hori_wind,         &
                                                  detj_at_w3),                  &
-                     fv_divergence_y_kernel_type(inc_one_y, hori_flux,         &
+                     fv_divergence_y_kernel_type(inc_one_y, hori_wind,         &
                                                  detj_at_w3),                  &
                      ! Get the updated unity values: np1 = 1 - half_dt * F(1)
                      X_minus_bY(np1_half_x, ini_one, half_dt, inc_one_x),      &
@@ -226,25 +170,10 @@ contains
       else
         ! Set unity field
         call invoke( setval_c(ini_one, 1.0_r_tran),                            &
-                     setval_c(ini_one_copy, 1.0_r_tran),                       &
-                     setval_c(hori_flux, 0.0_r_tran),                          &
-        ! compute unity fluxes -------------------------------------------------
-                     ffsl_flux_xy_kernel_type( hori_flux,                      &
-                                               ini_one, stencil_extent_xy,     &
-                                               detj_at_w3, stencil_extent_xy,  &
-                                               ini_one_copy,                   &
-                                               stencil_extent_xy,              &
-                                               detj_at_w3_copy,                &
-                                               stencil_extent_xy,              &
-                                               dep_dist_xy, frac_wind_xy,      &
-                                               face_selector_ew,               &
-                                               face_selector_ns,               &
-                                               order, monotone,                &
-                                               cfl_stencil_xy, dt ),           &
         ! compute unity increments ---------------------------------------------
-                     fv_divergence_x_kernel_type(inc_one_x, hori_flux,         &
+                     fv_divergence_x_kernel_type(inc_one_x, hori_wind,         &
                                                  detj_at_w3),                  &
-                     fv_divergence_y_kernel_type(inc_one_y, hori_flux,         &
+                     fv_divergence_y_kernel_type(inc_one_y, hori_wind,         &
                                                  detj_at_w3),                  &
                      ! Get the updated unity values: np1 = 1 - dt * F(1)
                      X_minus_bY(np1_x, ini_one, dt, inc_one_x),                &
@@ -259,23 +188,18 @@ contains
       ! TODO #4160: this assumes that if any_splitting_vhv=.true.
       ! then all transport uses VHV splitting
       if (any_splitting_vhv) then
-        call ffsl_vert_unity_transport_alg( dep_dist_z_half,  &
-                                            frac_wind_z_half, &
-                                            detj_at_w3,       &
-                                            half_dt,          &
+        call ffsl_vert_unity_transport_alg( vert_wind,   &
+                                            detj_at_w3,  &
+                                            half_dt,     &
                                             np1_half_z )
       else
-        call ffsl_vert_unity_transport_alg( dep_dist_z,  &
-                                            frac_wind_z, &
+        call ffsl_vert_unity_transport_alg( vert_wind,   &
                                             detj_at_w3,  &
                                             dt,          &
                                             np1_z )
       end if
 
     end if
-
-    nullify( w2h_fs, face_selector_ew, face_selector_ns, &
-             detj_at_w3, detj_at_w3_copy, field_fs )
 
     if ( subroutine_timers ) call timer('transport.ffsl_unity')
 
@@ -287,13 +211,11 @@ contains
   !> @details The algorithm calculates the conservative vertical transport of unity using
   !!          the FFSL scheme. This is required for advective form FFSL transport.
   !!
-  !> @param[in]     dep_dist_z        Departure points in z
-  !> @param[in]     frac_wind         Fractional wind in z
+  !> @param[in]     vert_wind         Vertical wind in z
   !> @param[in]     detj_at_w3        Det(J) at W3 dofs
   !> @param[in]     dt                The timestep length
   !> @param[in,out] np1_z             Conservative transport of unity in z
-  subroutine ffsl_vert_unity_transport_alg( dep_dist_z,  &
-                                            frac_wind,   &
+  subroutine ffsl_vert_unity_transport_alg( vert_wind,   &
                                             detj_at_w3,  &
                                             dt,          &
                                             np1_z )
@@ -301,8 +223,7 @@ contains
     implicit none
 
     ! Arguments ----------------------------------------------------------------
-    type(r_tran_field_type), intent(in)    :: dep_dist_z
-    type(r_tran_field_type), intent(in)    :: frac_wind
+    type(r_tran_field_type), intent(in)    :: vert_wind
     type(r_tran_field_type), intent(in)    :: detj_at_w3
     real(kind=r_tran),       intent(in)    :: dt
     type(r_tran_field_type), intent(inout) :: np1_z
@@ -310,41 +231,145 @@ contains
     ! Unity fields, increments, and fluxes
     type(r_tran_field_type) :: inc_one_z
     type(r_tran_field_type) :: ini_one
-    type(r_tran_field_type) :: flux_z
-    type(r_tran_field_type) :: flux_z_int
 
     ! Function spaces, height and volume pointers
-    type(function_space_type), pointer :: field_fs => null()
-    type(function_space_type), pointer :: w2v_fs => null()
+    type(function_space_type), pointer :: field_fs
 
     ! Function spaces
     field_fs => np1_z%get_function_space()
-    w2v_fs   => dep_dist_z%get_function_space()
 
     ! Initialise fields
     call ini_one%initialise( vector_space = field_fs )
     call inc_one_z%initialise( vector_space = field_fs )
-    call flux_z%initialise( vector_space = w2v_fs )
-    call flux_z_int%initialise( vector_space = w2v_fs )
 
     ! Set initial values to zero (except from unity field)
-    call invoke( setval_c(inc_one_z,  0.0_r_tran), &
-                 setval_c(ini_one,    1.0_r_tran), &
-                 setval_c(flux_z,     0.0_r_tran), &
-                 setval_c(flux_z_int, 0.0_r_tran)  )
-
-    ! Compute unity fluxes
-    call invoke( ffsl_flux_z_constant_kernel_type(flux_z, frac_wind,           &
-                                                  dep_dist_z, ini_one,         &
-                                                  detj_at_w3, dt) )
-
+    call invoke( setval_c(ini_one, 1.0_r_tran),                                &
     ! Take divergence of mass flux and multiply by inverse mass matrix to get increment
-    call invoke( fv_divergence_z_kernel_type(inc_one_z, flux_z, detj_at_w3),   &
+                 fv_divergence_z_kernel_type(inc_one_z, vert_wind,             &
+                                                                  detj_at_w3), &
                  ! Get the updated unity values: np1 = 1 - dt * F(1)
                  X_minus_bY(np1_z, ini_one, dt, inc_one_z) )
 
-    nullify( field_fs, w2v_fs )
-
   end subroutine ffsl_vert_unity_transport_alg
+
+  !===========================================================================!
+  !> @brief   Algorithm to calculate the SWIFT transport of a unity field.
+  !!
+  !> @param[in,out] adv_unity_xy        Transported unity field in x and y
+  !> @param[in,out] dep_dist_xy         Recomputed departure distances
+  !> @param[in,out] frac_wind_xy        Computed fractional part of wind
+  !> @param[in,out] dep_extent_oxy      Stencil extent for outer step
+  !> @param[in]     wind_xy             Horizontal wind
+  !> @param[in]     adv_detj_x          Cell volumes, transported in x
+  !> @param[in]     adv_detj_y          Cell volumes, transported in y
+  !> @param[in]     dep_stencil_extent  Stencil extent for departure_points
+  !> @param[in]     dt                  Time step
+  subroutine ffsl_unity_swift_alg( adv_unity_xy,       &
+                                   dep_dist_xy,        &
+                                   frac_wind_xy,       &
+                                   dep_extent_oxy,     &
+                                   wind_xy,            &
+                                   adv_detj_x,         &
+                                   adv_detj_y,         &
+                                   dep_stencil_extent, &
+                                   dt )
+
+    implicit none
+
+    ! Arguments ----------------------------------------------------------------
+    type(r_tran_field_type), intent(in)    :: wind_xy
+    type(r_tran_field_type), intent(in)    :: adv_detj_x
+    type(r_tran_field_type), intent(in)    :: adv_detj_y
+    integer(kind=i_def),     intent(in)    :: dep_stencil_extent
+    real(kind=r_tran),       intent(in)    :: dt
+    integer(kind=i_def),     intent(inout) :: dep_extent_oxy
+    type(r_tran_field_type), intent(inout) :: adv_unity_xy
+    type(r_tran_field_type), intent(inout) :: dep_dist_xy
+    type(r_tran_field_type), intent(inout) :: frac_wind_xy
+
+    ! Internal variables -------------------------------------------------------
+    ! Pointers to existing objects
+    type(integer_field_type), pointer :: face_selector_ew
+    type(integer_field_type), pointer :: face_selector_ns
+    type(field_type),         pointer :: panel_id
+    type(r_tran_field_type),  pointer :: detj_at_w3
+
+    ! Function spaces and mesh
+    type(function_space_type), pointer :: field_fs
+    type(function_space_type), pointer :: w2h_fs
+    type(mesh_type),           pointer :: mesh
+
+    ! Unity fields, increments, and fluxes
+    type(r_tran_field_type) :: increment
+    type(r_tran_field_type) :: hori_flux
+    type(r_tran_field_type) :: wind_dt
+
+    ! Half time step and flags for departure points
+    integer(kind=i_def) :: mesh_id
+    integer(kind=i_def) :: stencil_extent_xy
+    integer(kind=i_def) :: max_stencil_extent
+    logical(kind=l_def) :: cap_dep_points
+    real(kind=r_tran)   :: dep_min, dep_max
+
+    if ( subroutine_timers ) call timer('transport.ffsl_unity')
+
+    ! Get pre-computed objects and set pointers --------------------------------
+    mesh => adv_unity_xy%get_mesh()
+    mesh_id = mesh%get_id()
+    face_selector_ew => get_face_selector_ew(mesh_id)
+    face_selector_ns => get_face_selector_ns(mesh_id)
+    detj_at_w3 => get_detj_at_w3_r_tran(mesh_id)
+    panel_id => get_panel_id(mesh_id)
+
+    ! Get function space
+    ! To get compilers to be happy, need to pass a pointer as the mesh
+    field_fs => adv_unity_xy%get_function_space()
+
+  ! Check if we need increment of unity in x and y directions ----------------
+    w2h_fs => function_space_collection%get_fs(mesh, 0, W2H)
+
+    call increment%initialise( vector_space = field_fs )
+    call hori_flux%initialise( vector_space = w2h_fs )
+    call wind_dt%initialise( vector_space = w2h_fs )
+
+    ! Swap the halo values of adv_detj_x and adv_detj_y here
+    if (topology == topology_fully_periodic .AND. geometry == geometry_spherical) then
+      max_stencil_extent = MIN(adv_detj_x%get_field_halo_depth(), &
+                               adv_detj_y%get_field_halo_depth())
+      call invoke_ffsl_panel_swap_kernel_type(adv_detj_x, adv_detj_y, &
+                                              panel_id, max_stencil_extent)
+    end if
+
+    stencil_extent_xy = dep_stencil_extent
+    cap_dep_points = (horizontal_limit == horizontal_limit_cap)
+
+    ! Compute SWIFT outer departure points -------------------------------------
+    call invoke( setval_c(dep_dist_xy, 0.0_r_tran),                            &
+                 setval_c(frac_wind_xy, 0.0_r_tran),                           &
+                 a_times_X(wind_dt, dt, wind_xy),                              &
+                 hori_dep_dist_ffsl_kernel_type(dep_dist_xy,                   &
+                                                frac_wind_xy,                  &
+                                                wind_dt,                       &
+                                                adv_detj_y,                    &
+                                                stencil_extent_xy,             &
+                                                adv_detj_x,                    &
+                                                stencil_extent_xy,             &
+                                                face_selector_ew,              &
+                                                face_selector_ns,              &
+                                                dep_stencil_extent,            &
+                                                cap_dep_points),               &
+    ! Calculate updated unity field following 2D transport
+                 fv_divergence_2d_kernel_type(increment, wind_xy, detj_at_w3), &
+                 ! Get the updated unity values: np1 = 1 - dt * F(1)
+                 setval_c(adv_unity_xy, 1.0_r_tran),                           &
+                 inc_X_minus_bY(adv_unity_xy, dt, increment) )
+
+    ! Get the required stencil size from the departure points ------------------
+    call get_field_minmax(dep_dist_xy, dep_min, dep_max)
+    dep_extent_oxy = MAX( int(abs(dep_max), i_def), int(abs(dep_min), i_def) )
+
+    if ( subroutine_timers ) call timer('transport.ffsl_unity')
+
+  end subroutine ffsl_unity_swift_alg
 
 end module ffsl_unity_transport_alg_mod

@@ -78,7 +78,7 @@ contains
                                  reversible = (/.false./),                                 &
                                  enforce_min_value = (/.false./),                          &
                                  min_value = (/0.0_r_def/),                                &
-                                 consistent_ffsl_splitting = (/ 1 /),                      &
+                                 ffsl_splitting = (/ 1 /),                                 &
                                  max_vert_cfl_calc = max_vert_cfl_calc_uniform,            &
                                  transport_ageofair=.false.,                               &
                                  ageofair_reset_level = 10,                                &

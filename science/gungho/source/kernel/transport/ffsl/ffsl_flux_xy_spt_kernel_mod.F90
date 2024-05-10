@@ -217,7 +217,7 @@ contains
     integer(kind=i_def) :: rel_idx, dep_cell_idx, rel_dep_cell_idx
     integer(kind=i_def) :: dof_offset, sign_offset
     integer(kind=i_def) :: k, j, idx_3d
-    integer(kind=i_def) :: stencil_size, stencil_half, lam_edge_size, recon_size
+    integer(kind=i_def) :: stencil_half, lam_edge_size, recon_size
 
     ! Reals
     real(kind=r_tran)   :: displacement, frac_dist
@@ -235,22 +235,18 @@ contains
     allocate(field_local(recon_size))
     allocate(ipanel_local(recon_size))
 
-    ! Get half stencil size
-    stencil_size = stencil_size_x
-    stencil_half = (stencil_size + 1_i_def) / 2_i_def
-
     ! Get size the stencil should be to check if we are at the edge of a LAM domain
     lam_edge_size = 2_i_def*extent_size+1_i_def
 
-    if ( lam_edge_size > stencil_size) then
+    ! = X Calculation ======================================================== !
+    stencil_half = (stencil_size_x + 1_i_def) / 2_i_def
+
+    if ( lam_edge_size > stencil_size_x ) then
 
       ! At edge of LAM, so set output to zero ----------------------------------
       do k = 0, nlayers - 1
         do dof_iterator = 1, face_selector_ew(map_w3_2d(1))
           flux( map_w2h(local_dofs_x(dof_iterator)) + k ) = 0.0_r_tran
-        end do
-        do dof_iterator = 1, face_selector_ns(map_w3_2d(1))
-          flux( map_w2h(local_dofs_y(dof_iterator)) + k ) = 0.0_r_tran
         end do
       end do
 
@@ -355,8 +351,23 @@ contains
         end do ! vertical levels k
 
       end do ! dof_iterator
+    end if
 
-      ! ----------------------------------------------------------------------- !
+    ! = Y Calculation ======================================================== !
+    stencil_half = (stencil_size_y + 1_i_def) / 2_i_def
+
+    if ( lam_edge_size > stencil_size_y ) then
+
+      ! At edge of LAM, so set output to zero ----------------------------------
+      do k = 0, nlayers - 1
+        do dof_iterator = 1, face_selector_ns(map_w3_2d(1))
+          flux( map_w2h(local_dofs_y(dof_iterator)) + k ) = 0.0_r_tran
+        end do
+      end do
+
+    else
+
+      ! Not at edge of LAM so compute fluxes -----------------------------------
 
       ! Loop over the y direction dofs to compute flux at each dof
       do dof_iterator = 1, face_selector_ns(map_w3_2d(1))

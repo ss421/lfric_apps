@@ -415,7 +415,13 @@ contains
   !> @param[in]     flux               The mass flux for this transport step.
   !> @param[in]     transport_metadata Contains the configuration options for
   !!                                   transporting the field
-  subroutine end_of_consistent_step_alg(field_np1, flux, transport_metadata)
+  !> @param[in]     compute_field_np1  Optional flag, indicating whether
+  !!                                   field_np1 needs computing from the
+  !!                                   divergence of fluxes. If this argument
+  !!                                   is not provided, field_np1 will be
+  !!                                   computed but only on the final split step
+  subroutine end_of_consistent_step_alg(field_np1, flux, transport_metadata, &
+                                        compute_field_np1)
 
     use consistent_dispersion_kernel_mod, only: consistent_dispersion_kernel_type
     use inject_sh_w3_to_wt_kernel_mod,    only: inject_sh_w3_to_wt_kernel_type
@@ -430,6 +436,7 @@ contains
     type(r_tran_field_type),       intent(inout) :: field_np1
     type(r_tran_field_type),       intent(in)    :: flux
     type(transport_metadata_type), intent(in)    :: transport_metadata
+    logical(kind=l_def), optional, intent(in)    :: compute_field_np1
 
     ! Internal variables
     integer(kind=i_def)                   :: prime_extrusion_mesh_id
@@ -471,6 +478,7 @@ contains
     real(kind=r_tran)                     :: adv_dt
     real(kind=r_tran)                     :: acceptable_min
     real(kind=r_tran)                     :: field_min, field_max
+    logical(kind=l_def)                   :: to_compute_field_np1
 
     if ( subroutine_timers ) call timer('transport.end_of_transport')
 
@@ -487,9 +495,27 @@ contains
     final_split_step = ( transport_runtime%get_tracer_step_ctr() &
                          == transport_runtime%get_num_dry_steps() )
 
+    ! Set variable for determining whether to recompute field_np1 through
+    ! taking the divergence of fluxes over the whole time step
+    to_compute_field_np1 = final_split_step
+    if (present(compute_field_np1)) then
+      to_compute_field_np1 = compute_field_np1
+      if (enforce_min_value .and. min_val_method == min_val_method_iterative) then
+        to_compute_field_np1 = .true.
+      end if
+    end if
+
     ! ------------------------------------------------------------------------ !
     ! Compute consistent dispersion relation correction, if required
     ! ------------------------------------------------------------------------ !
+
+    if (theta_dispersion_correction .and. mr_function_space == Wtheta .and.    &
+        (trim(transport_metadata%get_name()) == 'potential_temperature' .or.   &
+         trim(transport_metadata%get_name()) == 'theta') .and. final_split_step) then
+      ! Theta dispersion correction was calculated in some step.
+      ! field_np1 will need recomputing, so set that flag here
+      to_compute_field_np1 = .true.
+    end if
 
     if (theta_dispersion_correction .and. mr_function_space == Wtheta .and.    &
         (flux_function_space == W2 .or. flux_function_space == W2H) .and.      &
@@ -548,7 +574,7 @@ contains
     ! Compute increment from all split steps
     ! ------------------------------------------------------------------------ !
 
-    if ( final_split_step ) then
+    if ( final_split_step .and. to_compute_field_np1 ) then
 
       ! ---------------------------------------------------------------------- !
       ! Calculate density at start of transport step

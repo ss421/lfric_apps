@@ -112,6 +112,7 @@ contains
     ! Transport options
     logical(kind=l_def) :: to_compute_adv_inc
     logical(kind=l_def) :: to_compute_field_np1
+    logical(kind=l_def) :: strang
 
     ! Subroutine name for timer
     character(*), parameter :: routine_name = 'transport.ffsl_vertical'
@@ -156,11 +157,8 @@ contains
       case ( equation_form_advective, equation_form_conservative )
 
         ! Get unity transport
-        if ( transport_metadata%get_splitting() ==  splitting_strang_vhv ) then
-          adv_one => transport_runtime%get_adv_unity_half_z(mesh_id)
-        else
-          adv_one => transport_runtime%get_adv_unity_z(mesh_id)
-        end if
+        strang = transport_metadata%get_splitting() == splitting_strang_vhv
+        adv_one => transport_runtime%get_adv_unity_z(mesh_id, strang)
 
         call invoke( fv_divergence_z_kernel_type(increment, mass_flux, detj_at_w3) )
         ! Get the advective increment from these conservative increments
@@ -283,11 +281,7 @@ contains
     case ( equation_form_conservative, equation_form_advective )
       detj_at_w3 => get_detj_at_w3_r_tran(mesh_id)
       dep_pts_z => transport_runtime%get_dep_dist_z_w2(mesh_id, strang_vhv)
-      if ( strang_vhv ) then
-        frac_wind_or_flux => transport_runtime%get_frac_wind_z_half(mesh_id)
-      else
-        frac_wind_or_flux => transport_runtime%get_frac_wind_z(mesh_id)
-      end if
+      frac_wind_or_flux => transport_runtime%get_frac_wind_z(mesh_id, strang_vhv)
 
     case ( equation_form_consistent )
       ! No need to take Strang into account for tracer departure points, as this

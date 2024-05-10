@@ -37,7 +37,7 @@ module check_configuration_mod
                                   enforce_min_value,               &
                                   horizontal_monotone,             &
                                   vertical_monotone,               &
-                                  consistent_ffsl_splitting
+                                  ffsl_splitting
   use transport_enumerated_types_mod,                              &
                             only: scheme_mol_3d,                   &
                                   scheme_ffsl_3d,                  &
@@ -59,8 +59,8 @@ module check_configuration_mod
                                   horizontal_monotone_relaxed,     &
                                   horizontal_monotone_strict,      &
                                   horizontal_monotone_clipping,    &
-                                  consistent_ffsl_splitting_swift, &
-                                  consistent_ffsl_splitting_cosmic
+                                  ffsl_splitting_swift, &
+                                  ffsl_splitting_cosmic
 
   implicit none
 
@@ -79,6 +79,7 @@ module check_configuration_mod
   public :: check_any_splitting_hvh
   public :: check_any_splitting_vhv
   public :: check_any_consistent_swift
+  public :: check_any_advective_swift
   public :: check_any_consistent_cosmic
   public :: check_any_shifted
   public :: check_wind_shifted
@@ -823,7 +824,7 @@ contains
 
   end function check_any_splitting_vhv
 
-  !> @brief   Determine whether SWIFT splitting is being used
+  !> @brief   Determine if SWIFT splitting is used for conservative tracers
   !> @details Loops through the transport schemes specified for different
   !>          variables and determines whether any are using SWIFT
   !> @return  Logical for whether SWIFT splitting is being used
@@ -840,13 +841,39 @@ contains
       if ( equation_form(i) == equation_form_consistent .and. &
            horizontal_method(i) == split_method_ffsl    .and. &
            scheme(i) == scheme_split                    .and. &
-           consistent_ffsl_splitting(i) == consistent_ffsl_splitting_swift ) then
+           ffsl_splitting(i) == ffsl_splitting_swift ) then
         any_swift = .true.
         exit
       end if
     end do
 
   end function check_any_consistent_swift
+
+  !> @brief   Determine if SWIFT splitting is being used for advective fields
+  !> @details Loops through the transport schemes specified for different
+  !>          variables and determines whether any are using SWIFT
+  !> @return  Logical for whether SWIFT splitting is being used
+  function check_any_advective_swift() result(any_swift)
+
+    implicit none
+
+    logical(kind=l_def) :: any_swift
+    integer(kind=i_def) :: i
+
+    any_swift = .false.
+
+    do i = 1, profile_size
+      if ( (equation_form(i) == equation_form_advective     .or.  &
+            equation_form(i) == equation_form_conservative) .and. &
+            horizontal_method(i) == split_method_ffsl       .and. &
+            scheme(i) == scheme_split                       .and. &
+            ffsl_splitting(i) == ffsl_splitting_swift ) then
+        any_swift = .true.
+        exit
+      end if
+    end do
+
+  end function check_any_advective_swift
 
   !> @brief   Determine whether consistent COSMIC splitting is being used
   !> @details Loops through the transport schemes specified for different
@@ -865,7 +892,7 @@ contains
       if ( equation_form(i) == equation_form_consistent .and. &
            horizontal_method(i) == split_method_ffsl    .and. &
            scheme(i) == scheme_split                    .and. &
-           consistent_ffsl_splitting(i) == consistent_ffsl_splitting_cosmic ) then
+           ffsl_splitting(i) == ffsl_splitting_cosmic ) then
         any_cosmic = .true.
         exit
       end if
