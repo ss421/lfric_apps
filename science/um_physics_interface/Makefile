@@ -70,7 +70,6 @@ document-api: api-documentation
 .PHONY: unit-tests
 unit-tests/%: export ADDITIONAL_EXTRACTION = $(CORE_ROOT_DIR)/infrastructure/source \
                                              $(CORE_ROOT_DIR)/components/science/source \
-                                             $(CORE_ROOT_DIR)/components/diagnostics_infrastructure/source \
                                              $(APPS_ROOT_DIR)/science/jules_interface/source/kernel \
                                              $(CORE_ROOT_DIR)/components/science/unit-test/support \
                                              $(APPS_ROOT_DIR)/science/gungho/source/diagnostics \
