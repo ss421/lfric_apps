@@ -218,7 +218,7 @@ subroutine ffsl_flux_z_nirvana_code( nlayers,   &
                                        dz(w3_idx + dep_cell_idx))
 
     case ( vertical_monotone_positive )
-      call vertical_nirvana_positive(reconstruction, frac_dist,       &
+      call vertical_nirvana_positive(reconstruction,                  &
                                      field(w3_idx + dep_cell_idx),    &
                                      edge_gradient(dep_cell_idx),     &
                                      edge_gradient(dep_cell_idx + 1), &

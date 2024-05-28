@@ -55,10 +55,12 @@ module check_configuration_mod
                                   vertical_monotone_relaxed,       &
                                   vertical_monotone_strict,        &
                                   vertical_monotone_clipping,      &
+                                  vertical_monotone_qm_pos,        &
                                   horizontal_monotone_koren,       &
                                   horizontal_monotone_relaxed,     &
                                   horizontal_monotone_strict,      &
                                   horizontal_monotone_clipping,    &
+                                  horizontal_monotone_qm_pos,      &
                                   ffsl_splitting_swift, &
                                   ffsl_splitting_cosmic
 
@@ -410,6 +412,24 @@ contains
                      horizontal_method(i) == split_method_sl) ) then
           write( log_scratch_space, '(A)') trim(field_names(i)) // ' variable ' // &
             'is set to use strict/relaxed horizontal monotonicity, but this is ' // &
+            'incompatible with the choice of horizontal method'
+          call log_event(log_scratch_space, LOG_LEVEL_ERROR)
+        end if
+
+        if ( (vertical_monotone(i) == vertical_monotone_qm_pos) .and. &
+              .not. (vertical_method(i) == split_method_ffsl)   .and. &
+              .not. (vertical_order == 2) ) then
+          write( log_scratch_space, '(A)') trim(field_names(i)) // ' variable ' // &
+            'is set to use quasi-monotone positive vertical monotonicity, but this is ' // &
+            'incompatible with the choice of vertical method'
+          call log_event(log_scratch_space, LOG_LEVEL_ERROR)
+        end if
+
+        if ( (horizontal_monotone(i) == horizontal_monotone_qm_pos) .and. &
+              .not. (horizontal_method(i) == split_method_ffsl)     .and. &
+              .not. (outer_order == 2) ) then
+          write( log_scratch_space, '(A)') trim(field_names(i)) // ' variable ' // &
+            'is set to use quasi-monotone positive horizontal monotonicity, but this is ' // &
             'incompatible with the choice of horizontal method'
           call log_event(log_scratch_space, LOG_LEVEL_ERROR)
         end if

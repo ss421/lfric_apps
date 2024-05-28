@@ -29,9 +29,10 @@ use argument_mod,                   only : arg_type,              &
 use fs_continuity_mod,              only : W3, W2v
 use constants_mod,                  only : r_tran, i_def, l_def, EPS_R_TRAN
 use kernel_mod,                     only : kernel_type
-use transport_enumerated_types_mod, only : vertical_monotone_relaxed, &
-                                           vertical_monotone_strict,  &
-                                           vertical_monotone_positive
+use transport_enumerated_types_mod, only : vertical_monotone_relaxed,  &
+                                           vertical_monotone_strict,   &
+                                           vertical_monotone_positive, &
+                                           vertical_monotone_qm_pos
 
 implicit none
 
@@ -43,7 +44,7 @@ private
 !> The type declaration for the kernel. Contains the metadata needed by the Psy layer
 type, public, extends(kernel_type) :: ffsl_flux_z_ppm_kernel_type
   private
-  type(arg_type) :: meta_args(9) = (/                  &
+  type(arg_type) :: meta_args(10) = (/                  &
        arg_type(GH_FIELD,  GH_REAL,    GH_WRITE, W2v), & ! flux
        arg_type(GH_FIELD,  GH_REAL,    GH_READ,  W2v), & ! frac_wind
        arg_type(GH_FIELD,  GH_REAL,    GH_READ,  W2v), & ! dep pts
@@ -52,6 +53,7 @@ type, public, extends(kernel_type) :: ffsl_flux_z_ppm_kernel_type
        arg_type(GH_FIELD,  GH_REAL,    GH_READ,  W3),  & ! detj
        arg_type(GH_SCALAR, GH_REAL,    GH_READ),       & ! dt
        arg_type(GH_SCALAR, GH_INTEGER, GH_READ),       & ! monotone
+       arg_type(GH_SCALAR, GH_REAL,    GH_READ),       & ! min_val
        arg_type(GH_SCALAR, GH_LOGICAL, GH_READ)        & ! log_space
        /)
   integer :: operates_on = CELL_COLUMN
@@ -76,6 +78,8 @@ contains
 !> @param[in]     detj      Volume of cells
 !> @param[in]     dt        Time step
 !> @param[in]     monotone  Monotonicity option to use
+!> @param[in]     min_val   Minimum value to enforce when using
+!!                          quasi-monotone limiter for PPM
 !> @param[in]     log_space Switch to use natural logarithmic space
 !!                          for edge interpolation
 !> @param[in]     ndf_w2v   Number of degrees of freedom for W2v per cell
@@ -93,6 +97,7 @@ subroutine ffsl_flux_z_ppm_code( nlayers,   &
                                  detj,      &
                                  dt,        &
                                  monotone,  &
+                                 min_val,   &
                                  log_space, &
                                  ndf_w2v,   &
                                  undf_w2v,  &
@@ -106,7 +111,8 @@ subroutine ffsl_flux_z_ppm_code( nlayers,   &
                                           vertical_ppm_mono_strict,            &
                                           vertical_ppm_positive,               &
                                           fourth_order_vertical_edge,          &
-                                          fourth_order_vertical_mono
+                                          fourth_order_vertical_mono,          &
+                                          fourth_order_vertical_quasi_mono
 
   implicit none
 
@@ -126,6 +132,7 @@ subroutine ffsl_flux_z_ppm_code( nlayers,   &
   integer(kind=i_def), intent(in)    :: map_w2v(ndf_w2v)
   real(kind=r_tran),   intent(in)    :: dt
   integer(kind=i_def), intent(in)    :: monotone
+  real(kind=r_tran),   intent(in)    :: min_val
   logical(kind=l_def), intent(in)    :: log_space
 
   ! Internal variables
@@ -223,9 +230,9 @@ subroutine ffsl_flux_z_ppm_code( nlayers,   &
   ! Loop again through edge reconstructions to limit them
   select case ( monotone )
   case ( vertical_monotone_strict, vertical_monotone_relaxed )
-    local_edge_idx = 0
-    call fourth_order_vertical_mono(field(w3_idx : w3_idx+3),                  &
-                                    local_edge_idx, edge_value(0))
+    edge_value(0) = min( max( field(w3_idx), field(w3_idx+1) ),                &
+                         max( edge_value(0), min( field(w3_idx),               &
+                                                  field(w3_idx+1) ) ) )
 
     local_edge_idx = 1
     call fourth_order_vertical_mono(field(w3_idx : w3_idx+3),                  &
@@ -243,10 +250,37 @@ subroutine ffsl_flux_z_ppm_code( nlayers,   &
     call fourth_order_vertical_mono(field(w3_idx+k-3 : w3_idx+k),              &
                                     local_edge_idx, edge_value(k))
 
-    local_edge_idx = 4
     k = nlayers
-    call fourth_order_vertical_mono(field(w3_idx+k-4 : w3_idx+k-1),            &
-                                    local_edge_idx, edge_value(k))
+    edge_value(k) = min( max( field(w3_idx+k-2), field(w3_idx+k-1) ),          &
+                         max( edge_value(k), min( field(w3_idx+k-2),           &
+                                                  field(w3_idx+k-1) ) ) )
+
+  case ( vertical_monotone_qm_pos )
+    edge_value(0) = min( max( field(w3_idx), field(w3_idx+1) ),                &
+                         max( edge_value(0), min( field(w3_idx),               &
+                                                  field(w3_idx+1) ) ) )
+
+    local_edge_idx = 1
+    call fourth_order_vertical_mono(field(w3_idx : w3_idx+3),                  &
+                                          local_edge_idx, edge_value(1))
+
+    local_edge_idx = 2
+    do k = 2, nlayers - 2
+      ! Perform edge reconstruction --------------------------------------------
+      call fourth_order_vertical_quasi_mono(field(w3_idx+k-2 : w3_idx+k+1),    &
+                                            dep_dist(w2v_idx + k), min_val,    &
+                                            edge_value(k))
+    end do
+
+    local_edge_idx = 3
+    k = nlayers - 1
+    call fourth_order_vertical_mono(field(w3_idx+k-3 : w3_idx+k),              &
+                                          local_edge_idx, edge_value(k))
+
+    k = nlayers
+    edge_value(k) = min( max( field(w3_idx+k-2), field(w3_idx+k-1) ),          &
+                         max( edge_value(k), min( field(w3_idx+k-2),           &
+                                                  field(w3_idx+k-1) ) ) )
 
   case ( vertical_monotone_positive )
     do k = 0, nlayers
@@ -302,7 +336,7 @@ subroutine ffsl_flux_z_ppm_code( nlayers,   &
                                     edge_value(dep_cell_idx),     &
                                     edge_value(dep_cell_idx + 1))
 
-    case ( vertical_monotone_relaxed )
+    case ( vertical_monotone_relaxed, vertical_monotone_qm_pos )
       call vertical_ppm_mono_relax(reconstruction, frac_dist,    &
                                    field(w3_idx + dep_cell_idx), &
                                    edge_value(dep_cell_idx),     &

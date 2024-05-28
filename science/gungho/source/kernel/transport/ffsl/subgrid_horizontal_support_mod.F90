@@ -12,6 +12,7 @@ use constants_mod,                  only: i_def, r_tran, l_def, EPS_R_TRAN
 use transport_enumerated_types_mod, only: horizontal_monotone_strict,   &
                                           horizontal_monotone_relaxed,  &
                                           horizontal_monotone_positive, &
+                                          horizontal_monotone_qm_pos,   &
                                           horizontal_monotone_none
 
 implicit none
@@ -21,6 +22,7 @@ private
 public :: fourth_order_horizontal_edge
 public :: horizontal_ppm_recon
 public :: horizontal_nirvana_recon
+public :: bound_field
 ! Routines from SPT
 public :: horizontal_ppm_recon_spt_edges
 public :: ppm_density_at_any_edge
@@ -42,20 +44,23 @@ contains
   !!         cells 2 and 3. The cells are assumed to be uniform in spacing.
   !!         Monotonicity options are provided.
   !!
-  !! @param[in]   density            Has dof map of the form | 1 | 2 | 3 | 4 |
-  !! @param[in]   monotone           Monotone option to ensures no over/undershoots
-  !! @return      density_at_edge    Interpolated density value at edge between
+  !> @param[in]   density            Has dof map of the form | 1 | 2 | 3 | 4 |
+  !> @param[in]   monotone           Monotone option to ensures no over/undershoots
+  !> @param[in]   min_val            Minimum value to enforce edge value to be for
+  !!                                 quasi-monotone limiter
+  !> @return      density_at_edge    Interpolated density value at edge between
   !!                                 cells 2 and 3.
   !----------------------------------------------------------------------------
-  function fourth_order_horizontal_edge(density,monotone) result(density_at_edge)
+  function fourth_order_horizontal_edge(density,monotone,min_val) result(density_at_edge)
 
     implicit none
 
     real(kind=r_tran),   intent(in) :: density(1:4)
     integer(kind=i_def), intent(in) :: monotone
+    real(kind=r_tran),   intent(in) :: min_val
 
     real(kind=r_tran) :: density_at_edge
-    real(kind=r_tran) :: t1, tmax, tmin
+    real(kind=r_tran) :: t1, t2
 
     ! As the cell widths are assumed to be constant the edge value reduces to that given in
     ! Colella and Woodward, JCP, 54, 1984, equation (1.9)
@@ -67,13 +72,20 @@ contains
       ! Limit edge value to be bounded by neighbouring values
       t1 = ( density_at_edge - density(2) )*( density(3) - density_at_edge )
       if ( t1 < 0.0_r_tran ) then
-         tmin = min(density(3),density(2))
-         tmax = max(density(3),density(2))
-         density_at_edge = min( tmax, max(density_at_edge,tmin) )
+         call bound_field(density_at_edge, density(2), density(3))
       end if
     else if ( monotone == horizontal_monotone_positive ) then
       ! Positivity - ensure edge value is positive
       density_at_edge = max(density_at_edge,0.0_r_tran)
+    else if ( monotone == horizontal_monotone_qm_pos ) then
+      ! Quasi-monotone limiter based on looking at successive gradients
+      t1 =( density(3)-density(2) )*(density(2)-density(1))
+      t2 =( density(2)-density(3) )*(density(3)-density(4))
+      if ( t1 < 0.0_r_tran .AND. t2 < 0.0_r_tran ) then
+         call bound_field(density_at_edge, density(2), density(3))
+      end if
+      ! Ensure edge value is greater than min_val
+      density_at_edge = max(density_at_edge, min_val)
     end if
 
   end function fourth_order_horizontal_edge
@@ -94,8 +106,10 @@ contains
   !! @param[in]   field       Field values in the 5 cells with ordering
   !!                          | 1 | 2 | 3 | 4 | 5 |
   !! @param[in]   monotone    Monotone option to ensures no over/undershoots
+  !> @param[in]   min_val     Minimum value to enforce edge value to be for
+  !!                          quasi-monotone limiter
   !----------------------------------------------------------------------------
-  subroutine horizontal_ppm_recon(recon,dep,field,monotone)
+  subroutine horizontal_ppm_recon(recon,dep,field,monotone,min_val)
 
     implicit none
 
@@ -103,6 +117,7 @@ contains
     real(kind=r_tran),    intent(in)  :: dep
     real(kind=r_tran),    intent(in)  :: field(1:5)
     integer(kind=i_def),  intent(in)  :: monotone
+    real(kind=r_tran),    intent(in)  :: min_val
 
     real(kind=r_tran) :: edge_left
     real(kind=r_tran) :: edge_right
@@ -110,8 +125,8 @@ contains
     real(kind=r_tran) :: t1, t2, t3, aa, bb
 
     ! Get PPM edge values
-    edge_left = fourth_order_horizontal_edge(field(1:4),monotone)
-    edge_right = fourth_order_horizontal_edge(field(2:5),monotone)
+    edge_left = fourth_order_horizontal_edge(field(1:4),monotone,min_val)
+    edge_right = fourth_order_horizontal_edge(field(2:5),monotone,min_val)
 
     ! Compute reconstruction weights
     if (dep >= 0.0_r_tran) then
@@ -136,7 +151,8 @@ contains
         ! If subgrid reconstruction has extrema in the cell then revert to constant reconstruction
         recon = field(3)
       end if
-    else if ( monotone == horizontal_monotone_relaxed ) then
+    else if ( monotone == horizontal_monotone_relaxed .or. &
+              monotone == horizontal_monotone_qm_pos ) then
       ! Relaxed monotonicity
       t1 = (2.0_r_tran*edge_left + edge_right - 3.0_r_tran*field(3)) &
            / (3.0_r_tran*edge_left + 3.0_r_tran*edge_right - 6.0_r_tran*field(3) + EPS_R_TRAN)
@@ -330,6 +346,32 @@ contains
     end if
 
   end subroutine horizontal_nirvana_recon
+
+  !----------------------------------------------------------------------------
+  !> @brief  Returns the field value bounded by two other field values such that
+  !!         min(field_one,field_two) <= field <= max(field_one,field_two)
+  !!
+  !! @param[inout] field       The field value to be bounded
+  !! @param[in]    field_one   The first field value
+  !! @param[in]    field_two   The second field value
+  !----------------------------------------------------------------------------
+  subroutine bound_field(field,field_one,field_two)
+
+    implicit none
+
+    ! Arguments
+    real(kind=r_tran), intent(inout) :: field
+    real(kind=r_tran), intent(in)    :: field_one
+    real(kind=r_tran), intent(in)    :: field_two
+
+    ! Min/max values
+    real(kind=r_tran) :: fmin, fmax
+
+    fmin = min(field_one,field_two)
+    fmax = max(field_one,field_two)
+    field = min( fmax, max(field, fmin) )
+
+  end subroutine bound_field
 
   !----------------------------------------------------------------------------
   !> @brief  Returns the horizontal PPM reconstruction. This is similar to the

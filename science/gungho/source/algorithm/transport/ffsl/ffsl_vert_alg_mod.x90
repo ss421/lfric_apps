@@ -254,6 +254,7 @@ contains
     ! Useful constants
     integer(kind=i_def) :: mesh_id
     integer(kind=i_def) :: step
+    real(kind=r_tran)   :: min_val
 
     ! Get pre-computed objects and set pointers --------------------------------
     mesh_id = field_n%get_mesh_id()
@@ -305,6 +306,7 @@ contains
     ! Compute fluxes
     select case ( order )
     case ( 0 )
+      ! Constant reconstruction
       call invoke( ffsl_flux_z_constant_kernel_type(mass_flux,                 &
                                                     frac_wind_or_flux,         &
                                                     dep_pts_z,                 &
@@ -312,6 +314,7 @@ contains
                                                     detj_at_w3,                &
                                                     step_dt) )
     case ( 1 )
+      ! Nirvana reconstruction
       if (reversible) then
         call invoke( ffsl_flux_z_rev_nirvana_kernel_type(mass_flux,            &
                                                          frac_wind_or_flux,    &
@@ -336,15 +339,26 @@ contains
       end if
 
     case ( 2 )
-          call invoke( ffsl_flux_z_ppm_kernel_type(mass_flux,                  &
-                                                   frac_wind_or_flux,          &
-                                                   dep_pts_z,                  &
-                                                   field_n,                    &
-                                                   dz_w3,                      &
-                                                   detj_at_w3,                 &
-                                                   step_dt,                    &
-                                                   monotone,                   &
-                                                   log_space) )
+      ! PPM reconstruction
+      ! The minimum value is required for the quasi-monotone limiter, if
+      ! it is not set we assume positivity.
+      ! If other monotonicity is required then min_val is unused
+      if (transport_metadata%get_enforce_min_value()) then
+        min_val = transport_metadata%get_min_value()
+      else
+        min_val = 0.0_r_tran
+      end if
+
+      call invoke( ffsl_flux_z_ppm_kernel_type(mass_flux,                      &
+                                               frac_wind_or_flux,              &
+                                               dep_pts_z,                      &
+                                               field_n,                        &
+                                               dz_w3,                          &
+                                               detj_at_w3,                     &
+                                               step_dt,                        &
+                                               monotone,                       &
+                                               min_val,                        &
+                                               log_space) )
 
     case default
       call log_event( "ffsl_1d_vert_flux_alg: order not implemented", LOG_LEVEL_ERROR )

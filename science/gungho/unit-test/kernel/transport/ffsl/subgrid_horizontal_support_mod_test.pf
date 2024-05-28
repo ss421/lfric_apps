@@ -9,10 +9,11 @@
 module subgrid_horizontal_support_mod_test
 
   use constants_mod,                  only: i_def, l_def, r_tran
-  use transport_enumerated_types_mod, only: horizontal_monotone_none,    &
-                                            horizontal_monotone_strict,  &
-                                            horizontal_monotone_relaxed, &
-                                            horizontal_monotone_positive
+  use transport_enumerated_types_mod, only: horizontal_monotone_none,     &
+                                            horizontal_monotone_strict,   &
+                                            horizontal_monotone_relaxed,  &
+                                            horizontal_monotone_positive, &
+                                            horizontal_monotone_qm_pos
 
   implicit none
 
@@ -29,7 +30,7 @@ contains
     implicit none
 
     real(kind=r_tran)   :: rho(1:4), edge_value, tol
-    real(kind=r_tran)   :: answer
+    real(kind=r_tran)   :: answer, min_val
     integer(kind=i_def) :: monotone
 
     ! Set tolerance
@@ -44,11 +45,12 @@ contains
     rho(2) = 3.0_r_tran
     rho(3) = 5.0_r_tran
     rho(4) = 7.0_r_tran
+    min_val = 0.0_r_tran
     monotone  = horizontal_monotone_none
 
     answer = 4.0_r_tran
 
-    edge_value = fourth_order_horizontal_edge(rho,monotone)
+    edge_value = fourth_order_horizontal_edge(rho,monotone,min_val)
 
     @assertEqual(answer, edge_value, tol)
 
@@ -62,7 +64,7 @@ contains
     monotone = horizontal_monotone_none
     answer = 10.75_r_tran
 
-    edge_value = fourth_order_horizontal_edge(rho,monotone)
+    edge_value = fourth_order_horizontal_edge(rho,monotone,min_val)
 
     @assertEqual(answer, edge_value, tol)
 
@@ -70,7 +72,7 @@ contains
     monotone = horizontal_monotone_strict
     answer = 10.0_r_tran
 
-    edge_value = fourth_order_horizontal_edge(rho,monotone)
+    edge_value = fourth_order_horizontal_edge(rho,monotone,min_val)
 
     @assertEqual(answer, edge_value, tol)
 
@@ -78,7 +80,7 @@ contains
     monotone = horizontal_monotone_relaxed
     answer = 10.0_r_tran
 
-    edge_value = fourth_order_horizontal_edge(rho,monotone)
+    edge_value = fourth_order_horizontal_edge(rho,monotone,min_val)
 
     @assertEqual(answer, edge_value, tol)
 
@@ -86,7 +88,15 @@ contains
     monotone = horizontal_monotone_positive
     answer = 10.75_r_tran
 
-    edge_value = fourth_order_horizontal_edge(rho,monotone)
+    edge_value = fourth_order_horizontal_edge(rho,monotone,min_val)
+
+    @assertEqual(answer, edge_value, tol)
+
+    ! Quasi-Monotone Positive
+    monotone = horizontal_monotone_qm_pos
+    answer = 10.75_r_tran
+
+    edge_value = fourth_order_horizontal_edge(rho,monotone,min_val)
 
     @assertEqual(answer, edge_value, tol)
 
@@ -103,7 +113,7 @@ contains
     implicit none
 
     real(kind=r_tran)   :: rho(1:5), tol
-    real(kind=r_tran)   :: answer, recon, dep_pt
+    real(kind=r_tran)   :: answer, recon, dep_pt, min_val
     integer(kind=i_def) :: monotone
 
     ! Set tolerance and switch monotonicity off
@@ -113,6 +123,7 @@ contains
       tol = 1.0e-6_r_tran
     end if
     monotone = horizontal_monotone_none
+    min_val = 0.0_r_tran
 
     ! This function makes use of other functions within subgrid_horizontal_support_mod,
     ! so we only test a linear function with no monotonicity
@@ -125,7 +136,7 @@ contains
 
     answer = 3.25_r_tran
 
-    call horizontal_ppm_recon(recon,dep_pt,rho,monotone)
+    call horizontal_ppm_recon(recon,dep_pt,rho,monotone,min_val)
 
     @assertEqual(answer, recon, tol)
 
@@ -178,6 +189,50 @@ contains
     @assertEqual(answer, recon, tol)
 
   end subroutine horizontal_nirvana_recon_test
+
+  !------------------------------------------------------------------
+
+  @test
+  subroutine bound_field_test()
+    use pFUnit_Mod
+    use, intrinsic :: iso_fortran_env,  only: real64
+    use subgrid_horizontal_support_mod, only: bound_field
+
+    implicit none
+
+    real(kind=r_tran)   :: field, field_one, field_two
+    real(kind=r_tran)   :: answer, tol
+
+    ! Set tolerance
+    if ( r_tran == real64 ) then
+      tol = 1.0e-12_r_tran
+    else
+      tol = 1.0e-6_r_tran
+    end if
+
+    ! Set field bounds
+    field_one = 0.5_r_tran
+    field_two = 2.0_r_tran
+
+    ! First check that a field within the bounds is not changed
+    field     = 1.0_r_tran
+    answer    = 1.0_r_tran
+    call bound_field(field, field_one, field_two)
+    @assertEqual(answer, field, tol)
+
+    ! Second check that a field is bounded below
+    field     = 0.25_r_tran
+    answer    = 0.5_r_tran
+    call bound_field(field, field_one, field_two)
+    @assertEqual(answer, field, tol)
+
+    ! Third check that a field is bounded above
+    field     = 3.8_r_tran
+    answer    = 2.0_r_tran
+    call bound_field(field, field_one, field_two)
+    @assertEqual(answer, field, tol)
+
+  end subroutine bound_field_test
 
   !------------------------------------------------------------------
 

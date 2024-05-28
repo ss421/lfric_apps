@@ -9,6 +9,7 @@
 module subgrid_vertical_support_mod
 
 use constants_mod,                  only: i_def, r_tran, l_def, EPS_R_TRAN
+use subgrid_horizontal_support_mod, only: bound_field
 
 implicit none
 
@@ -23,6 +24,7 @@ public :: vertical_nirvana_recon
 public :: vertical_ppm_recon
 ! Monotonic limiters
 public :: fourth_order_vertical_mono
+public :: fourth_order_vertical_quasi_mono
 public :: vertical_nirvana_mono_strict
 public :: vertical_nirvana_mono_relax
 public :: vertical_nirvana_positive
@@ -341,23 +343,65 @@ contains
     integer(kind=i_def),  intent(in)    :: edge_to_do
     real(kind=r_tran),    intent(inout) :: edge_below
 
-    real(kind=r_tran) :: t1, tmin, tmax
+    real(kind=r_tran) :: t1
 
     ! Strict Monotonicity
     if ( edge_to_do > 0_i_def .AND. edge_to_do < 4_i_def) then
       t1 = ( edge_below - rho(edge_to_do) )*( rho(edge_to_do+1) - edge_below )
       if ( t1 < 0.0_r_tran ) then
-        tmin = min(rho(edge_to_do+1),rho(edge_to_do))
-        tmax = max(rho(edge_to_do+1),rho(edge_to_do))
-        edge_below = min( tmax, max(edge_below,tmin) )
+        call bound_field(edge_below, rho(edge_to_do), rho(edge_to_do+1))
       end if
     else if ( edge_to_do == 0_i_def ) then
-      edge_below = min( max( rho(2), rho(1) ), max( edge_below, min( rho(2), rho(1) ) ) )
+      call bound_field(edge_below, rho(1), rho(2))
     else if ( edge_to_do == 4_i_def ) then
-      edge_below = min( max( rho(4), rho(3) ), max( edge_below, min( rho(4), rho(3) ) ) )
+      call bound_field(edge_below, rho(3), rho(4))
     end if
 
   end subroutine fourth_order_vertical_mono
+
+  !----------------------------------------------------------------------------
+  !> @brief Applies quasi-monotonic positivity to a 4th-order edge reconstruction.
+  !!        This requires two cells either side of the edge.
+  !> @param[in]    rho        Density values of four cells which have the ordering
+  !!                          | 1 | 2 | 3 | 4 |
+  !! @param[in]    dep        The fractional departure distance at the edge
+  !> @param[in]    min_val    Minimum value to enforce edge value to be
+  !> @param[inout] edge_below The edge value located at edge 2 below
+  !!                          cells       | 1 | 2 | 3 | 4 |
+  !!                          with edges  0   1   2   3   4
+  !----------------------------------------------------------------------------
+  subroutine fourth_order_vertical_quasi_mono(rho,        &
+                                              dep,        &
+                                              min_val,    &
+                                              edge_below)
+
+    implicit none
+
+    real(kind=r_tran),    intent(in)    :: rho(1:4)
+    real(kind=r_tran),    intent(in)    :: dep
+    real(kind=r_tran),    intent(in)    :: min_val
+    real(kind=r_tran),    intent(inout) :: edge_below
+
+    real(kind=r_tran)   :: t1
+    integer(kind=i_def) :: sign_dep, sign_cor, cell, cell_up, cell_dw
+
+    ! Quasi-monotonic positive edges
+
+    ! Get sign of departure distance
+    sign_dep = INT(SIGN(1.0_r_tran, dep))
+    sign_cor = INT((1.0_r_tran - SIGN(1.0_r_tran, dep))/2.0_r_tran)
+    cell    = 2+sign_cor
+    cell_up = 2+sign_cor+sign_dep
+    cell_dw = 2+sign_cor-sign_dep
+    ! Look at sign of successive gradients at edge in upwind direction
+    t1 = ( rho(cell_up) - rho(cell) )*( rho(cell) - rho(cell_dw) )
+    if ( t1 < 0.0_r_tran ) then
+      call bound_field(edge_below, rho(2), rho(3))
+    end if
+    ! Apply positivity
+    edge_below = max(edge_below, min_val)
+
+  end subroutine fourth_order_vertical_quasi_mono
 
   !----------------------------------------------------------------------------
   !> @brief  Applies a strict monotonic limiter to a Nirvana reconstruction.
@@ -498,14 +542,12 @@ contains
   !> @brief  Applies a positive limiter to a Nirvana reconstruction.
   !!
   !! @param[inout] recon       The Nirvana reconstruction
-  !! @param[in]    dep         The fractional departure distance for the reconstruction point
   !! @param[in]    field       Field value of the cell upwind of the reconstruction
   !! @param[in]    grad_below  Estimate of gradient above cell
   !! @param[in]    grad_above  Estimate of gradient below cell
   !! @param[in]    dz          Height of cell
   !----------------------------------------------------------------------------
   subroutine vertical_nirvana_positive(recon,      &
-                                       dep,        &
                                        field,      &
                                        grad_below, &
                                        grad_above, &
@@ -515,7 +557,6 @@ contains
 
     ! Arguments
     real(kind=r_tran),   intent(inout) :: recon
-    real(kind=r_tran),   intent(in)    :: dep
     real(kind=r_tran),   intent(in)    :: field
     real(kind=r_tran),   intent(in)    :: dz
     real(kind=r_tran),   intent(in)    :: grad_below

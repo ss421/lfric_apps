@@ -250,12 +250,13 @@ contains
     use pFUnit_Mod
     use, intrinsic :: iso_fortran_env,  only: real64
     use subgrid_vertical_support_mod,   only: fourth_order_vertical_edge, &
-                                              fourth_order_vertical_mono
+                                              fourth_order_vertical_mono, &
+                                              fourth_order_vertical_quasi_mono
 
     implicit none
 
     real(kind=r_tran)   :: rho(1:4), dz(1:4), edge_value, tol
-    real(kind=r_tran)   :: answer(1:5)
+    real(kind=r_tran)   :: answer(1:5), answer_qm, dep, min_val
     integer(kind=i_def) :: edge_to_do
 
     ! Set tolerance
@@ -298,6 +299,27 @@ contains
       @assertEqual(answer(edge_to_do+1), edge_value, tol)
 
     end do
+
+    ! Now test quasi-monotone edge value - this only applies to
+    ! edge = 2
+
+    answer_qm = 10.75_r_tran
+    dep = 1.0_r_tran
+    min_val = 0.0_r_tran
+    edge_to_do = 2
+
+    edge_value = 0.0_r_tran
+    call fourth_order_vertical_edge(rho,        &
+                                    dz,         &
+                                    edge_to_do, &
+                                    edge_value)
+
+    call fourth_order_vertical_quasi_mono(rho,     &
+                                          dep,     &
+                                          min_val, &
+                                          edge_value)
+
+    @assertEqual(answer_qm, edge_value, tol)
 
   end subroutine fourth_order_vertical_mono_test
 
@@ -500,7 +522,6 @@ contains
                                 dz)
 
     call vertical_nirvana_positive(recon,      &
-                                   dep_pt,     &
                                    rho,        &
                                    grad_below, &
                                    grad_above, &

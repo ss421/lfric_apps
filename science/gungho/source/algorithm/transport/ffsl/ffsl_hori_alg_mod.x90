@@ -324,6 +324,7 @@ contains
     integer(kind=i_def) :: cfl_stencil_xy
     integer(kind=i_def) :: extra_points
     integer(kind=i_def) :: remap_depth
+    real(kind=r_tran)   :: min_val
 
     ! Get pre-computed objects and set pointers --------------------------------
     mesh_id = field_n%get_mesh_id()
@@ -361,6 +362,15 @@ contains
     stencil_extent_xy = dep_stencil_extent_xy + extra_points + inner_order
     ! PSyclone needs these to be different variables to the stencil_extents
     cfl_stencil_xy = stencil_extent_xy
+
+    ! The minimum value is required for the quasi-monotone limiter for PPM,
+    ! if it is not set we assume positivity.
+    ! If other monotonicity or scheme is required then min_val is unused
+    if (transport_metadata%get_enforce_min_value()) then
+      min_val = transport_metadata%get_min_value()
+    else
+      min_val = 0.0_r_tran
+    end if
 
     ! remap the field on an extended cubed sphere, if required -----------------
     ! If needed remap the field on an extended cubed sphere
@@ -408,7 +418,7 @@ contains
                                             dep_dist_xy, frac_wind_xy,          &
                                             face_selector_ew,                   &
                                             face_selector_ns,                   &
-                                            inner_order, monotone,              &
+                                            inner_order, monotone, min_val,     &
                                             cfl_stencil_xy, dt ) )
     end if
 
@@ -539,6 +549,7 @@ contains
     integer(kind=i_def) :: stencil_extent_xy
     integer(kind=i_def) :: cfl_stencil_xy
     integer(kind=i_def) :: remap_depth
+    real(kind=r_tran)   :: min_val
 
     logical(kind=l_def) :: to_compute_adv_inc
     logical(kind=l_def) :: to_compute_field_np1
@@ -614,6 +625,15 @@ contains
     ! PSyclone needs these to be different variables to the stencil_extents
     cfl_stencil_xy = stencil_extent_xy
 
+    ! The minimum value is required for the quasi-monotone limiter for PPM,
+    ! if it is not set we assume positivity.
+    ! If other monotonicity or scheme is required then min_val is unused
+    if (transport_metadata%get_enforce_min_value()) then
+      min_val = transport_metadata%get_min_value()
+    else
+      min_val = 0.0_r_tran
+    end if
+
     ! remap the field on an extended cubed sphere, if required -----------------
     ! If needed remap the field on an extended cubed sphere
     if ( extended_mesh ) then
@@ -676,7 +696,8 @@ contains
                                              dep_dist_xy, frac_flux_xy,        &
                                              face_selector_ew,                 &
                                              face_selector_ns, order,          &
-                                             monotone, cfl_stencil_xy, dt ) )
+                                             monotone, min_val,                &
+                                             cfl_stencil_xy, dt ) )
     ! Conservative/advective forms of the transport equation ===================
     else if (special_edges_treatment .and. swift_splitting) then
       ! Advective/conservative, SWIFT splitting and special edges --------------
@@ -705,7 +726,8 @@ contains
                                              dep_dist_xy, frac_flux_xy,        &
                                              face_selector_ew,                 &
                                              face_selector_ns, order,          &
-                                             monotone, cfl_stencil_xy, dt ) )
+                                             monotone, min_val,                &
+                                             cfl_stencil_xy, dt ) )
     else if (special_edges_treatment) then
       ! Advective/conservative, COSMIC splitting and special edges -------------
       call invoke( setval_c(flux, 0.0_r_tran),                                 &
@@ -735,7 +757,8 @@ contains
                                              dep_dist_xy, frac_flux_xy,        &
                                              face_selector_ew,                 &
                                              face_selector_ns, order,          &
-                                             monotone, cfl_stencil_xy, dt ) )
+                                             monotone, min_val,                &
+                                             cfl_stencil_xy, dt ) )
     end if
     if ( subroutine_timers ) call timer('transport.ffsl_hori_sweeps')
 
@@ -958,6 +981,7 @@ contains
     integer(kind=i_def) :: stencil_extent_xy
     integer(kind=i_def) :: cfl_stencil_xy
     integer(kind=i_def) :: remap_depth
+    real(kind=r_tran)   :: min_val
 
     ! Get pre-computed objects and set pointers --------------------------------
     mesh_id = field_x%get_mesh_id()
@@ -1012,6 +1036,15 @@ contains
     ! PSyclone needs these to be different variables to the stencil_extents
     cfl_stencil_xy = stencil_extent_xy
 
+    ! The minimum value is required for the quasi-monotone limiter for PPM,
+    ! if it is not set we assume positivity.
+    ! If other monotonicity or scheme is required then min_val is unused
+    if (transport_metadata%get_enforce_min_value()) then
+      min_val = transport_metadata%get_min_value()
+    else
+      min_val = 0.0_r_tran
+    end if
+
     ! remap the field on an extended cubed sphere, if required -----------------
     ! If needed remap the field on an extended cubed sphere
     if ( extended_mesh ) then
@@ -1061,7 +1094,8 @@ contains
                                             dep_dist_xy, frac_flux_xy,          &
                                             face_selector_ew,                   &
                                             face_selector_ns, order,            &
-                                            monotone, cfl_stencil_xy, step_dt ) )
+                                            monotone, min_val,                  &
+                                            cfl_stencil_xy, step_dt ) )
 
     else if (special_edges_treatment) then
       ! Advective/conservative and special edges -------------------------------
@@ -1090,7 +1124,8 @@ contains
                                             dep_dist_xy, frac_flux_xy,          &
                                             face_selector_ew,                   &
                                             face_selector_ns, order,            &
-                                            monotone, cfl_stencil_xy, step_dt ) )
+                                            monotone, min_val,                  &
+                                            cfl_stencil_xy, step_dt ) )
     end if
     if ( subroutine_timers ) call timer('transport.ffsl_hori_sweeps')
 

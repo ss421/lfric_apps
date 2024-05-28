@@ -40,7 +40,7 @@ module ffsl_flux_xy_kernel_mod
   !> The type declaration for the kernel. Contains the metadata needed by the PSy layer
   type, public, extends(kernel_type) :: ffsl_flux_xy_kernel_type
     private
-    type(arg_type) :: meta_args(13) = (/                                       &
+    type(arg_type) :: meta_args(14) = (/                                       &
          arg_type(GH_FIELD,  GH_REAL,    GH_WRITE, ANY_DISCONTINUOUS_SPACE_2), & ! flux
          arg_type(GH_FIELD,  GH_REAL,    GH_READ,  W3, STENCIL(X1D)),          & ! field_for_x
          arg_type(GH_FIELD,  GH_REAL,    GH_READ,  W3, STENCIL(X1D)),          & ! dry_mass_for_x
@@ -52,6 +52,7 @@ module ffsl_flux_xy_kernel_mod
          arg_type(GH_FIELD,  GH_INTEGER, GH_READ,  ANY_DISCONTINUOUS_SPACE_3), & ! face selector ns
          arg_type(GH_SCALAR, GH_INTEGER, GH_READ     ),                        & ! order
          arg_type(GH_SCALAR, GH_INTEGER, GH_READ     ),                        & ! monotone
+         arg_type(GH_SCALAR, GH_REAL,    GH_READ     ),                        & ! min_val
          arg_type(GH_SCALAR, GH_INTEGER, GH_READ     ),                        & ! extent_size
          arg_type(GH_SCALAR, GH_REAL,    GH_READ     )                         & ! dt
          /)
@@ -92,6 +93,8 @@ contains
   !!                                    loop over for this column
   !> @param[in]     order               Order of reconstruction
   !> @param[in]     monotone            Horizontal monotone option for FFSL
+  !> @param[in]     min_val             Minimum value to enforce when using
+  !!                                    quasi-monotone limiter for PPM
   !> @param[in]     extent_size         Stencil extent needed for the LAM edge
   !> @param[in]     dt                  Time step
   !> @param[in]     ndf_w2h             Num of DoFs for W2h per cell
@@ -123,6 +126,7 @@ contains
                                 face_selector_ns,    &
                                 order,               &
                                 monotone,            &
+                                min_val,             &
                                 extent_size,         &
                                 dt,                  &
                                 ndf_w2h,             &
@@ -172,6 +176,7 @@ contains
     real(kind=r_tran),   intent(in)    :: frac_dry_flux(undf_w2h)
     integer(kind=i_def), intent(in)    :: order
     integer(kind=i_def), intent(in)    :: monotone
+    real(kind=r_tran),   intent(in)    :: min_val
     integer(kind=i_def), intent(in)    :: extent_size
     real(kind=r_tran),   intent(in)    :: dt
     integer(kind=i_def), intent(in)    :: face_selector_ew(undf_w3_2d)
@@ -304,7 +309,7 @@ contains
           case ( 2 )
             ! PPM
             call horizontal_ppm_recon(recon_field, frac_dist, &
-                                      field_local, monotone)
+                                      field_local, monotone, min_val)
           end select
 
           ! Assign flux ========================================================
@@ -417,7 +422,7 @@ contains
           case ( 2 )
             ! PPM
             call horizontal_ppm_recon(recon_field, frac_dist, &
-                                      field_local, monotone)
+                                      field_local, monotone, min_val)
           end select
 
           ! Assign flux ========================================================
