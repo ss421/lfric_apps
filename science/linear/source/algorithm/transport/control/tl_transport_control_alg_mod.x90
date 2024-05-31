@@ -118,21 +118,27 @@ contains
       primary_mesh => ls_wind_n%get_mesh()
       shifted_mesh => mesh_collection%get_mesh(primary_mesh, SHIFTED)
 
-      call set_transport_runtime( ls_wind_n, ls_wind_np1, &
-                                  model_clock, outer,     &
-                                  cheap_update_flag, shifted_mesh )
-      call tl_transport_runtime%initialise( wind_n, wind_np1,   &
-                                            model_clock, outer, &
-                                            cheap_update_flag, shifted_mesh )
+      call set_transport_runtime( ls_wind_n, ls_wind_np1,                      &
+                                  model_clock, outer,                          &
+                                  cheap_update_flag,                           &
+                                  rho_d_n_rdef=advected_fields(igh_d),         &
+                                  shifted_mesh=shifted_mesh )
+      call tl_transport_runtime%initialise( wind_n, wind_np1,                  &
+                                            model_clock, outer,                &
+                                            cheap_update_flag,                 &
+                                            rho_d_n_rdef=ls_advected_fields(igh_d), &
+                                            shifted_mesh=shifted_mesh )
 
       nullify(primary_mesh, shifted_mesh)
     else
-      call set_transport_runtime( ls_wind_n, ls_wind_np1, &
-                                   model_clock, outer,     &
-                                   cheap_update_flag )
-      call tl_transport_runtime%initialise( wind_n, wind_np1,   &
-                                            model_clock, outer, &
-                                            cheap_update_flag )
+      call set_transport_runtime( ls_wind_n, ls_wind_np1,                      &
+                                  model_clock, outer,                          &
+                                  cheap_update_flag,                           &
+                                  rho_d_n_rdef=advected_fields(igh_d) )
+      call tl_transport_runtime%initialise( wind_n, wind_np1,                  &
+                                            model_clock, outer,                &
+                                            cheap_update_flag,                 &
+                                            rho_d_n_rdef=ls_advected_fields(igh_d) )
     end if
 
     ! Initialise fields

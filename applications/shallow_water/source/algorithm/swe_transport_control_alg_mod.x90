@@ -155,14 +155,16 @@ contains
   !> @param[in]     outer           Outer (advection) iteration number
   !> @param[in]     wind_prev       (Optional) Estimate of end of timestep wind
   !!                                from previous outer iteration
-
+  !> @param[in]     geopot_n        Geopotential from before transport (not
+  !!                                multiplied by predictor factor)
   subroutine swe_transport_control_alg_step( advection_inc,   &
                                              advected_fields, &
                                              state_n,         &
                                              state_np1,       &
                                              model_clock,     &
                                              outer,           &
-                                             wind_prev )
+                                             wind_prev,       &
+                                             geopot_n )
 
     use fem_constants_mod,               only: get_mass_matrix
     use operator_mod,                    only: operator_type
@@ -181,6 +183,7 @@ contains
     class(model_clock_type),         intent(in)    :: model_clock
     integer(kind=i_def),             intent(in)    :: outer
     type(field_type),                intent(in), optional :: wind_prev
+    type(field_type),                intent(in), optional :: geopot_n
 
     ! Fields from advected_fields, state_n and state_np1 vector
     type(field_type), pointer :: wind_np1 => null(), &
@@ -256,7 +259,13 @@ contains
     prev_inc = advection_inc
 
     ! Create transport_runtime object (advecting wind etc)
-    call set_transport_runtime(wind_for_adv, wind_np1, model_clock, outer, cheap_update_flag)
+    if (present(geopot_n)) then
+      call set_transport_runtime(wind_for_adv, wind_np1, model_clock, outer, &
+                                 cheap_update_flag, rho_d_n_rdef=geopot_n)
+    else
+      call set_transport_runtime(wind_for_adv, wind_np1, model_clock, outer, &
+                                 cheap_update_flag, rho_d_n_rdef=geopot)
+    end if
 
     ! Initialise geopotential variables
     call geopot_np1%initialise(vector_space = geopot%get_function_space())

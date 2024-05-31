@@ -70,6 +70,7 @@ module tl_test_advect_theta_field_mod
     ! Input
     type(field_type), pointer :: n_u => null()
     type(field_type), pointer :: ls_u => null()
+    type(field_type), pointer :: ls_rho => null()
     type(field_type), pointer :: n_theta => null()
     type(field_type), pointer :: ls_theta => null()
     type(field_type) :: p_u, p_theta
@@ -105,6 +106,7 @@ module tl_test_advect_theta_field_mod
     call ls_fields%get_field('ls_u', ls_u)
     call prognostic_fields%get_field('theta', n_theta)
     call ls_fields%get_field('ls_theta', ls_theta)
+    call ls_fields%get_field('ls_rho', ls_rho)
     call p_u%initialise( vector_space = &
       function_space_collection%get_fs(mesh, element_order, W2) )
     call p_theta%initialise( vector_space = &
@@ -136,7 +138,8 @@ module tl_test_advect_theta_field_mod
 
     ! Init stuff
     call gungho_transport_control_alg_init( mesh )
-    call set_transport_runtime( ls_u, ls_u, modeldb%clock, 1_i_def, cheap_update = .false. )
+    call set_transport_runtime( ls_u, ls_u, modeldb%clock, 1_i_def, &
+                                cheap_update = .false., rho_d_n_rdef=ls_rho )
     transport_metadata => transport_metadata_collection%get_transport_metadata('potential_temperature')
 
     cast_dt = real(modeldb%clock%get_seconds_per_step(), r_def)
@@ -164,13 +167,16 @@ module tl_test_advect_theta_field_mod
                    inc_X_plus_Y( n_u, p_u ),                  &
                    inc_X_plus_Y( n_theta, p_theta ) )
 
-      call set_transport_runtime(n_u, n_u, modeldb%clock, 1_i_def, cheap_update = .false.)
+      call set_transport_runtime(n_u, n_u, modeldb%clock, 1_i_def, &
+                                 cheap_update = .false., rho_d_n_rdef=ls_rho)
 
       call transport_field( n_theta_np1, n_theta, cast_dt, transport_metadata )
       call invoke( X_minus_Y( n2_advection_inc, n_theta_np1, n_theta ) )
 
-      call set_transport_runtime(ls_u, ls_u, modeldb%clock, 1_i_def, cheap_update = .false.)
-      call tl_transport_runtime%initialise(p_u, p_u, modeldb%clock, 1_i_def, cheap_update = .false.)
+      call set_transport_runtime(ls_u, ls_u, modeldb%clock, 1_i_def, &
+                                 cheap_update = .false., rho_d_n_rdef=ls_rho)
+      call tl_transport_runtime%initialise(p_u, p_u, modeldb%clock, 1_i_def, &
+                                           cheap_update = .false., rho_d_n_rdef=ls_rho)
 
 
       call tl_transport_field( p_theta_np1, p_theta, ls_theta, &

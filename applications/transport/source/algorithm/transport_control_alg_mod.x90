@@ -347,12 +347,14 @@ contains
                                model_clock,       &
                                iteration_number,  &
                                cheap_update_flag, &
-                               shifted_mesh)
+                               rho_d_n_rdef=rho,  &
+                               shifted_mesh=shifted_mesh)
 
     if (use_multires_coupling) then
       call set_transport_runtime(aerosol_wind, aerosol_wind,    &
                                  model_clock, iteration_number, &
-                                 cheap_update_flag, aerosol_shifted_mesh)
+                                 cheap_update_flag,             &
+                                 shifted_mesh=aerosol_shifted_mesh)
     end if
 
     ! Transport dry density

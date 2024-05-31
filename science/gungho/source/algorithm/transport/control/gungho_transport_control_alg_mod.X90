@@ -172,6 +172,8 @@ contains
   !!                                iteration transport used for cheap transport update
   !> @param[in]     wind_prev       (Optional) Estimate of end of timestep wind from
   !!                                previous outer iteration
+  !> @param[in]     rho_d_n         (Optional) dry density to be transported,
+  !!                                without the predictor factor
   !> @param[in,out] adv_tracer_all_outer
   !!                                (Optional) Tracers after transport on every iteration
   !> @param[in]     adv_tracer_all_outer_after_slow
@@ -193,6 +195,7 @@ contains
                                           wind_np1, wind_n, mr_out, mr_in,   &
                                           model_clock, outer,                &
                                           cheap_update, prev_inc, wind_prev, &
+                                          rho_d_n,                           &
                                           adv_tracer_all_outer,              &
                                           adv_tracer_all_outer_after_slow,   &
                                           adv_tracer_last_outer,             &
@@ -244,6 +247,7 @@ contains
     logical(kind=l_def),         intent(in)    :: cheap_update
     type(field_type),            intent(in),    optional :: prev_inc(bundle_size)
     type(field_type),            intent(in),    optional :: wind_prev
+    type(field_type),    target, intent(in),    optional :: rho_d_n
     type(field_collection_type), intent(inout), optional :: adv_tracer_all_outer
     type(field_collection_type), intent(in),    optional :: adv_tracer_all_outer_after_slow
     type(field_collection_type), intent(inout), optional :: adv_tracer_last_outer
@@ -258,7 +262,10 @@ contains
     type(field_type)    :: wind_for_adv
     logical(kind=l_def) :: do_moisture_diagnostics
     real(r_def)         :: cast_dt
+    type(field_type)    :: rho_d_np1
     type(field_type)    :: aerosol_wind_n, aerosol_wind_np1
+    type(field_type), pointer :: rho_d_n_ptr
+    type(field_type), target  :: rho_d_n_trgt
 
     type(mesh_type),     pointer :: primary_mesh => null()
     type(mesh_type),     pointer :: shifted_mesh => null()
@@ -285,18 +292,31 @@ contains
       call invoke( setval_X(wind_for_adv, wind_n) )
     end if
 
+    ! Set rho to be used in for transport of tracers
+    if (present(rho_d_n)) then
+      rho_d_n_ptr => rho_d_n
+    else
+      call advected_fields(igh_d)%copy_field_properties(rho_d_n_trgt)
+      call invoke( setval_X(rho_d_n_trgt, advected_fields(igh_d)) )
+      rho_d_n_ptr => rho_d_n_trgt
+    end if
+
+
     ! Create object in transport_runtime_collection (advecting wind etc)
     if ( check_any_shifted() ) then
       primary_mesh => wind_n%get_mesh()
       shifted_mesh => mesh_collection%get_mesh(primary_mesh, SHIFTED)
 
-      call set_transport_runtime( wind_n, wind_np1,   &
-                                  model_clock, outer, &
-                                  cheap_update, shifted_mesh )
+      call set_transport_runtime( wind_n, wind_np1,          &
+                                  model_clock, outer,        &
+                                  cheap_update,              &
+                                  rho_d_n_rdef=rho_d_n_ptr,  &
+                                  shifted_mesh=shifted_mesh )
     else
-      call set_transport_runtime( wind_n, wind_np1,   &
-                                  model_clock, outer, &
-                                  cheap_update )
+      call set_transport_runtime( wind_n, wind_np1,          &
+                                  model_clock, outer,        &
+                                  cheap_update,              &
+                                  rho_d_n_rdef=rho_d_n_ptr )
     end if
 
     cast_dt = real(model_clock%get_seconds_per_step(), r_def)
@@ -305,9 +325,9 @@ contains
     call clone_bundle(advected_fields, fields_np1, bundle_size)
     call set_bundle_scalar(0.0_r_def, fields_np1, bundle_size)
 
-    ! Determine
+    ! Determine whether to write out moisture diagnostics
     do_moisture_diagnostics = write_conservation_diag .and. &
-                              outer == outer_iterations
+                              outer == outer_iterations .and. present(rho_d_n)
 
 
     ! ------------------------------------------------------------------------ !
@@ -348,8 +368,7 @@ contains
     if ( moisture_formulation /= moisture_formulation_dry ) then
       ! Write out moisture diagnostics
       if ( do_moisture_diagnostics ) then
-        call moisture_conservation_alg( advected_fields(igh_d), &
-                                        mr_in, 'Before transport' )
+        call moisture_conservation_alg( rho_d_n, mr_in, 'Before transport' )
       end if
 
       call log_event("Transporting moisture mixing ratio fields...", LOG_LEVEL_INFO)
@@ -410,7 +429,7 @@ contains
             ! Set transport runtime -- no cheap update
             call set_transport_runtime( aerosol_wind_n, aerosol_wind_np1, &
                                         model_clock, outer, .false.,      &
-                                        aerosol_shifted_mesh )
+                                        shifted_mesh=aerosol_shifted_mesh )
 
             ! Restrict dry fields
             aerosol_transport_runtime => get_transport_runtime(aerosol_primary_mesh)
@@ -434,7 +453,8 @@ contains
 
               call set_transport_runtime( wind_n, wind_np1,   &
                                           model_clock, outer, &
-                                          .false., shifted_mesh )
+                                          .false.,            &
+                                          shifted_mesh=shifted_mesh )
             else
               call set_transport_runtime( wind_n, wind_np1,   &
                                           model_clock, outer, &
@@ -490,8 +510,9 @@ contains
       ! ---------------------------------------------------------------------- !
       ! Write out moisture diagnostics
       if (do_moisture_diagnostics) then
-        call moisture_conservation_alg( fields_np1(igh_d), mr_out, &
-                                        'After transport' )
+        call rho_d_n%copy_field_properties(rho_d_np1)
+        call invoke( X_plus_Y(rho_d_np1, rho_d_n, advection_inc(igh_d)) )
+        call moisture_conservation_alg( rho_d_np1, mr_out, 'After transport' )
       end if
 
     end if

@@ -232,6 +232,7 @@ contains
   !> @param[in]     model_clock           Time within the model
   !> @param[in]     outer                 Outer (advection) iteration number
   !> @param[in]     cheap_update          Logical flag for cheap transport update
+  !> @param[in]     rho_d_n_rdef          Start of transport dry density
   !> @param[in]     shifted_mesh          (Optional) Shifted mesh
   !>
   subroutine transport_runtime_initialiser( self,                 &
@@ -240,7 +241,8 @@ contains
                                             model_clock,          &
                                             outer,                &
                                             cheap_update,         &
-                                            shifted_mesh)
+                                            rho_d_n_rdef,         &
+                                            shifted_mesh )
 
     use calc_dep_pts_alg_mod,          only: calc_vert_dep_pts, &
                                              calc_hori_dep_pts, &
@@ -273,6 +275,7 @@ contains
     class(model_clock_type), target, intent(in) :: model_clock
     integer(kind=i_def),             intent(in) :: outer
     logical(kind=l_def),             intent(in) :: cheap_update
+    type(field_type),      optional, intent(in) :: rho_d_n_rdef
 
     type(mesh_type),  pointer, intent(in), optional :: shifted_mesh
 
@@ -328,6 +331,7 @@ contains
     ! r_tran type fields
     type(r_tran_field_type), target :: primal_wind_n
     type(r_tran_field_type), target :: primal_wind_np1
+    type(r_tran_field_type)         :: rho_d_n
 
     if ( subroutine_timers ) call timer('transport.runtime_init')
 
@@ -1051,6 +1055,13 @@ contains
                 self%tracer_stencil_extent_oxy(n_meshes, n_steps)              &
       )
       if ( subroutine_timers ) call timer('transport.runtime_allocate')
+    end if
+
+    ! Set dry density from start of transport step
+    if (present(rho_d_n_rdef)) then
+      call rho_d_n%initialise( rho_d_n_rdef%get_function_space() )
+      call invoke_copy_to_rtran(rho_d_n, rho_d_n_rdef)
+      call self%set_rho_d(rho_d_n, 1)
     end if
 
     ! Set step counter to be 1

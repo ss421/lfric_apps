@@ -466,7 +466,7 @@ contains
     ! Set up mass variable for tracer transport
     call mass_n%initialise(vector_space = geopot%get_function_space())
     call mass_np1%initialise(vector_space = geopot%get_function_space())
-    call invoke( setval_X(mass_n, adv_fields%vector(isw_g)) )
+    call invoke( setval_X(mass_n, state_n%vector(isw_g)) )
 
     ! Initialise transported RHS and the previous wind for the cheap transport update
     call rhs_adv%set_scalar(0.0_r_def)
@@ -487,7 +487,8 @@ contains
                                            state,       &
                                            model_clock, &
                                            outer,       &
-                                           wind_prev )
+                                           wind_prev,   &
+                                           state_n%vector(isw_g) )
 
       ! Set wind_prev to be latest estimate of wind
       call invoke( setval_X(wind_prev, state%vector(isw_u)) )

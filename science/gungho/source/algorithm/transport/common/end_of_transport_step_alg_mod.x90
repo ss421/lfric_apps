@@ -10,6 +10,7 @@ module end_of_transport_step_alg_mod
 
   use base_mesh_config_mod,           only: topology, topology_non_periodic
   use boundaries_config_mod,          only: limited_area, transport_boundary_depth
+  use check_configuration_mod,        only: check_any_eqn_consistent
   use conservative_neg_fix_kernel_mod, &
                                       only: conservative_neg_fix_kernel_type
   use constants_mod,                  only: i_def, r_tran, l_def, r_def
@@ -27,6 +28,8 @@ module end_of_transport_step_alg_mod
   use function_space_collection_mod,  only: function_space_collection
   use fv_divergence_2d_kernel_mod,    only: fv_divergence_2d_kernel_type
   use fv_divergence_3d_kernel_mod,    only: fv_divergence_3d_kernel_type
+  use fv_divergence_x_kernel_mod,     only: fv_divergence_x_kernel_type
+  use fv_divergence_y_kernel_mod,     only: fv_divergence_y_kernel_type
   use fv_divergence_z_kernel_mod,     only: fv_divergence_z_kernel_type
   use geometric_constants_mod,        only: get_height,           &
                                             get_face_selector_ew, &
@@ -174,17 +177,22 @@ contains
     integer(kind=i_def)                   :: mesh_id, step, fs_idx
     integer(kind=i_def)                   :: limit_iteration
     integer(kind=i_def)                   :: num_limiting_steps
-    type(mesh_type),              pointer :: mesh => null()
+    type(mesh_type),              pointer :: mesh
     type(r_tran_field_type)               :: increment
+    type(r_tran_field_type)               :: increment_x
+    type(r_tran_field_type)               :: increment_y
     type(r_tran_field_type)               :: sum_flux
     type(r_tran_field_type)               :: conservative_field_np1
-    type(r_tran_field_type),      pointer :: conservative_field_n => null()
-    type(r_tran_field_type),      pointer :: detj_at_w3 => null()
-    type(r_tran_field_type),      pointer :: field_start => null()
-    type(r_tran_operator_type),   pointer :: div => null()
-    type(operator_type),          pointer :: div_r_def => null()
-    type(transport_runtime_type), pointer :: transport_runtime => null()
-    type(function_space_type),    pointer :: w2_fs => null()
+    type(r_tran_field_type)               :: conservative_field_x
+    type(r_tran_field_type)               :: conservative_field_y
+    type(r_tran_field_type),      pointer :: conservative_field_n
+    type(r_tran_field_type),      pointer :: detj_at_w3
+    type(r_tran_field_type),      pointer :: field_start
+    type(r_tran_operator_type),   pointer :: div
+    type(operator_type),          pointer :: div_r_def
+    type(transport_runtime_type), pointer :: transport_runtime
+    type(function_space_type),    pointer :: w2_fs
+    type(function_space_type),    pointer :: field_fs
     logical(kind=l_def)                   :: enforce_min_value
     logical(kind=l_def)                   :: final_split_step
     logical(kind=l_def)                   :: is_dry_field
@@ -218,7 +226,8 @@ contains
 
       field_start => transport_runtime%get_field_n()
       w2_fs => function_space_collection%get_fs(mesh, element_order, W2)
-      call increment%initialise(field_np1%get_function_space())
+      field_fs => field_np1%get_function_space()
+      call increment%initialise(field_fs)
       call sum_flux%initialise(w2_fs)
 
       ! Get final field at end of transport
@@ -326,62 +335,81 @@ contains
         direction = direction_3d
       end select
 
+      field_fs => field_np1%get_function_space()
       step = transport_runtime%get_tracer_step_ctr()
 
-      ! Store rho_d from the start of the whole transport step
-      if (step == 1) then
-        call transport_runtime%set_rho_d(field_in, step)
-      end if
+      ! Need to compute the corresponding density transported by this flux
+      if ( subroutine_timers ) call timer('transport.end_cons_update')
 
-      ! Store rho_d from the end of this step
-      if ( final_split_step ) then
-        call transport_runtime%set_rho_d(field_np1, step + 1)
+      conservative_field_n => transport_runtime%get_rho_d(mesh_id, step)
+      call conservative_field_np1%initialise(field_fs)
+      call increment%initialise(field_fs)
+
+      if (operators == operators_fem) then
+        ! Finite element transport, so need full divergence operator
+        div => get_directional_im3_div_r_tran(mesh_id, direction)
+        call invoke_dg_matrix_vector_rtran(increment, flux, div)
+        call invoke( X_minus_Y(conservative_field_np1, conservative_field_n,   &
+                               increment) )
 
       else
-        ! field_np1 is advective so need to compute the conservative update
-        if ( subroutine_timers ) call timer('transport.end_cons_update')
+        ! Can use quicker lowest-order kernels to take the divergence
+        select case (direction)
+        case (direction_3d)
+          call invoke( fv_divergence_3d_kernel_type(increment, flux,           &
+                                                    detj_at_w3),               &
+                       X_minus_Y(conservative_field_np1,                       &
+                                 conservative_field_n, increment) )
+        case (direction_h)
+          call invoke( fv_divergence_2d_kernel_type(increment, flux,           &
+                                                    detj_at_w3),               &
+                       X_minus_Y(conservative_field_np1,                       &
+                                 conservative_field_n, increment) )
+        case (direction_v)
+          call invoke( fv_divergence_z_kernel_type(increment, flux,            &
+                                                   detj_at_w3),                &
+                       X_minus_Y(conservative_field_np1,                       &
+                                 conservative_field_n, increment) )
+        end select
 
-        conservative_field_n => transport_runtime%get_rho_d(mesh_id, step)
-        call conservative_field_np1%initialise(field_in%get_function_space())
-        call increment%initialise(field_np1%get_function_space())
+        ! We may also need to compute rho_d_ffsl for consistent transport
+        if ( direction == direction_h .and. check_any_eqn_consistent() ) then
+          ! Compute stored FFSL density fields by adding increments to the
+          ! previously stored rho fields, and not the advective rho predictor
+          call conservative_field_x%initialise( vector_space = field_fs )
+          call conservative_field_y%initialise( vector_space = field_fs )
+          call increment_x%initialise( vector_space = field_fs )
+          call increment_y%initialise( vector_space = field_fs )
 
-        if (operators == operators_fem) then
-          ! Finite element transport, so need full divergence operator
-          div => get_directional_im3_div_r_tran(mesh_id, direction)
-          call invoke_dg_matrix_vector_rtran(increment, flux, div)
-          call invoke( X_minus_Y(conservative_field_np1, conservative_field_n, &
-                                 increment) )
+          call invoke( fv_divergence_x_kernel_type(increment_x, flux,          &
+                                                   detj_at_w3),                &
+                       fv_divergence_y_kernel_type(increment_y, flux,          &
+                                                   detj_at_w3),                &
+                       X_minus_Y(conservative_field_x, conservative_field_n,   &
+                                                                increment_x),  &
+                       X_minus_Y(conservative_field_y, conservative_field_n,   &
+                                                                increment_y) )
 
-        else
-          ! Can use quicker lowest-order kernels to take the divergence
-          select case (direction)
-          case (direction_3d)
-            call invoke( fv_divergence_3d_kernel_type(increment, flux,         &
-                                                      detj_at_w3),             &
-                         X_minus_Y(conservative_field_np1,                     &
-                                   conservative_field_n, increment) )
-          case (direction_h)
-            call invoke( fv_divergence_2d_kernel_type(increment, flux,         &
-                                                      detj_at_w3),             &
-                         X_minus_Y(conservative_field_np1,                     &
-                                   conservative_field_n, increment) )
-          case (direction_v)
-            call invoke( fv_divergence_z_kernel_type(increment, flux,          &
-                                                     detj_at_w3),              &
-                         X_minus_Y(conservative_field_np1,                     &
-                                   conservative_field_n, increment) )
-          end select
+          if ( limited_area .and. topology == topology_non_periodic ) then
+            call overwrite_blending_zone_rtran(conservative_field_x, conservative_field_n, &
+                                               depth=transport_boundary_depth)
+            call overwrite_blending_zone_rtran(conservative_field_y, conservative_field_n, &
+                                               depth=transport_boundary_depth)
+          end if
+
+          call transport_runtime%set_rho_d_ffsl_x(conservative_field_x, step)
+          call transport_runtime%set_rho_d_ffsl_y(conservative_field_y, step)
         end if
-
-        if ( limited_area .and. topology == topology_non_periodic ) then
-          call overwrite_blending_zone_rtran(conservative_field_np1, conservative_field_n, depth=transport_boundary_depth)
-        end if
-
-        call transport_runtime%set_rho_d(conservative_field_np1, step + 1)
-
-        if ( subroutine_timers ) call timer('transport.end_cons_update')
 
       end if
+
+      if ( limited_area .and. topology == topology_non_periodic ) then
+        call overwrite_blending_zone_rtran(conservative_field_np1, conservative_field_n, depth=transport_boundary_depth)
+      end if
+
+      call transport_runtime%set_rho_d(conservative_field_np1, step + 1)
+
+      if ( subroutine_timers ) call timer('transport.end_cons_update')
 
       ! Store the dry flux
       call transport_runtime%set_dry_flux(flux, step)
@@ -391,9 +419,6 @@ contains
     call transport_runtime%inc_tracer_step_ctr()
 
     call log_field_minmax( LOG_LEVEL_DEBUG, 'field_np1: end_of_conservative_step', field_np1)
-
-    nullify(mesh, div, div_r_def, transport_runtime, field_start, &
-            conservative_field_n)
 
     if ( subroutine_timers ) call timer('transport.end_of_transport')
 

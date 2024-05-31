@@ -99,12 +99,14 @@ contains
   !> @param[in] model_clock           Time within the model
   !> @param[in] outer                 Outer (advection) iteration number
   !> @param[in] cheap_update          Logical flag for cheap transport update
+  !> @param[in] rho_d_n_rdef          (Optional) Density at start of step
   !> @param[in] shifted_mesh          (Optional) Shifted mesh
   subroutine set_transport_runtime(primal_wind_n_rdef,   &
                                    primal_wind_np1_rdef, &
                                    model_clock,          &
                                    outer,                &
                                    cheap_update,         &
+                                   rho_d_n_rdef,         &
                                    shifted_mesh)
 
     implicit none
@@ -114,6 +116,7 @@ contains
     class(model_clock_type), target, intent(in) :: model_clock
     integer(kind=i_def),             intent(in) :: outer
     logical(kind=l_def),             intent(in) :: cheap_update
+    type(field_type),      optional, intent(in) :: rho_d_n_rdef
 
     type(mesh_type),  pointer, intent(in), optional :: shifted_mesh
 
@@ -127,18 +130,20 @@ contains
     idx = idx_from_local_mesh_id(local_mesh_id)
 
     if ( present( shifted_mesh ) ) then
-      call transport_runtime_list(idx)%initialise(primal_wind_n_rdef,   &
-                                                  primal_wind_np1_rdef, &
-                                                  model_clock,          &
-                                                  outer,                &
-                                                  cheap_update,         &
-                                                  shifted_mesh)
+      call transport_runtime_list(idx)%initialise(primal_wind_n_rdef,          &
+                                                  primal_wind_np1_rdef,        &
+                                                  model_clock,                 &
+                                                  outer,                       &
+                                                  cheap_update,                &
+                                                  rho_d_n_rdef=rho_d_n_rdef,   &
+                                                  shifted_mesh=shifted_mesh)
     else
-      call transport_runtime_list(idx)%initialise(primal_wind_n_rdef,   &
-                                                  primal_wind_np1_rdef, &
-                                                  model_clock,          &
-                                                  outer,                &
-                                                  cheap_update )
+      call transport_runtime_list(idx)%initialise(primal_wind_n_rdef,          &
+                                                  primal_wind_np1_rdef,        &
+                                                  model_clock,                 &
+                                                  outer,                       &
+                                                  cheap_update,                &
+                                                  rho_d_n_rdef=rho_d_n_rdef)
     end if
 
   end subroutine set_transport_runtime

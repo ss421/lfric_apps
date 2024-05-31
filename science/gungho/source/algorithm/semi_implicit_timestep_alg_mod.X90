@@ -688,6 +688,7 @@ contains
                                            mr, self%mr_after_slow, model_clock,    &
                                            outer, cheap_update,                    &
                                            self%adv_inc_prev, self%wind_prev,      &
+                                           self%state_after_slow(igh_d),           &
                                            adv_tracer_all_outer,                   &
                                            adv_tracer_all_outer_after_slow,        &
                                            adv_tracer_last_outer,                  &

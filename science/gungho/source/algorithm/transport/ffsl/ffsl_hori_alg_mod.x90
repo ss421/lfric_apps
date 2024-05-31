@@ -23,7 +23,6 @@ module ffsl_hori_alg_mod
                                               get_face_selector_ew, &
                                               get_face_selector_ns
   use integer_field_mod,                only: integer_field_type
-  use limited_area_lbc_alg_mod,         only: overwrite_blending_zone_rtran
   use log_mod,                          only: log_event, LOG_LEVEL_ERROR
   use mesh_mod,                         only: mesh_type
   use r_tran_field_mod,                 only: r_tran_field_type
@@ -58,7 +57,7 @@ module ffsl_hori_alg_mod
   use io_config_mod,                    only: subroutine_timers
   use subgrid_config_mod,               only: inner_order, outer_order
   use finite_element_config_mod,        only: element_order
-  use transport_config_mod,             only: extended_mesh, dry_field_name, &
+  use transport_config_mod,             only: extended_mesh, &
                                               special_edges_treatment
 
   implicit none
@@ -110,9 +109,6 @@ contains
     ! Internal variables -------------------------------------------------------
     ! Pointers to existing objects
     type(mesh_type),              pointer :: mesh
-    type(r_tran_field_type),      pointer :: rho_d_n
-    type(r_tran_field_type),      pointer :: detj_at_w3
-    type(transport_runtime_type), pointer :: transport_runtime
 
     ! Function spaces
     type(function_space_type), pointer :: field_fs
@@ -135,14 +131,10 @@ contains
     type(r_tran_field_type) :: increment_y
     type(r_tran_field_type) :: flux
     type(r_tran_field_type) :: flux_first
-    type(r_tran_field_type) :: conservative_field_x
-    type(r_tran_field_type) :: conservative_field_y
 
     ! Useful constants
     real(kind=r_tran)   :: half_dt
     logical(kind=l_def) :: swift_splitting
-    integer(kind=i_def) :: step
-    logical(kind=l_def) :: is_dry_field
 
     if ( subroutine_timers ) call timer(routine_name)
 
@@ -161,7 +153,6 @@ contains
 
     swift_splitting = (transport_metadata%get_ffsl_splitting() == &
                        ffsl_splitting_swift)
-    is_dry_field = ( trim(transport_metadata%get_name()) == trim(dry_field_name) )
 
     ! Initialise fields used by all splitting options --------------------------
     call field_x%initialise( vector_space = field_fs )
@@ -214,47 +205,6 @@ contains
       if ( swift_splitting ) then
         call invoke( aX_plus_bY(mass_flux, 0.5_r_tran, flux_first,             &
                                            0.5_r_tran, flux) )
-
-        ! @todo this section needs removing following lfric-apps:#32
-        ! Need to pause here to compute rho_d_ffsl that is stored for consistent transport
-        if ( is_dry_field .and. check_any_eqn_consistent() ) then
-          ! Compute stored FFSL density fields by adding increments the
-          ! previous conservative rho fields, and not the advective rho predictor
-          call conservative_field_x%initialise( vector_space = field_fs )
-          call conservative_field_y%initialise( vector_space = field_fs )
-          call increment_x%initialise( vector_space = field_fs )
-          call increment_y%initialise( vector_space = field_fs )
-
-          detj_at_w3 => get_detj_at_w3_r_tran(mesh%get_id())
-
-          call invoke( fv_divergence_x_kernel_type(increment_x, mass_flux,     &
-                                                   detj_at_w3),                &
-                       fv_divergence_y_kernel_type(increment_y, mass_flux,     &
-                                                   detj_at_w3) )
-
-          transport_runtime => get_transport_runtime(mesh)
-          step = transport_runtime%get_tracer_step_ctr()
-          if (step == 1) then
-            rho_d_n => field_n
-          else
-            rho_d_n => transport_runtime%get_rho_d(mesh%get_id(), step)
-          end if
-          call invoke( X_minus_bY(conservative_field_x, rho_d_n, step_dt,      &
-                                                              increment_x),    &
-                       X_minus_bY(conservative_field_y, rho_d_n, step_dt,      &
-                                                              increment_y) )
-
-          if ( limited_area .and. topology == topology_non_periodic ) then
-            call overwrite_blending_zone_rtran(conservative_field_x, rho_d_n, &
-                                                depth=transport_boundary_depth)
-            call overwrite_blending_zone_rtran(conservative_field_y, rho_d_n, &
-                                                depth=transport_boundary_depth)
-          end if
-
-          call transport_runtime%set_rho_d_ffsl_x(conservative_field_x, step)
-          call transport_runtime%set_rho_d_ffsl_y(conservative_field_y, step)
-        end if
-
       else
         call invoke( setval_X(mass_flux, flux) )
       end if
@@ -527,8 +477,6 @@ contains
     type(r_tran_field_type) :: flux_broken
     type(r_tran_field_type) :: conservative_field_n
     type(r_tran_field_type) :: conservative_field_np1
-    type(r_tran_field_type) :: conservative_field_x
-    type(r_tran_field_type) :: conservative_field_y
 
     type(r_tran_field_type) :: increment
 
@@ -555,7 +503,6 @@ contains
     logical(kind=l_def) :: to_compute_field_np1
     integer(kind=i_def) :: extra_points
     logical(kind=l_def) :: outer
-    logical(kind=l_def) :: is_dry_field
 
     ! Get pre-computed objects and set pointers --------------------------------
     mesh_id = field_x%get_mesh_id()
@@ -616,8 +563,6 @@ contains
     else
       to_compute_field_np1 = .true.
     end if
-
-    is_dry_field = ( trim(transport_metadata%get_name()) == trim(dry_field_name) )
 
     ! Set constant values
     extra_points = ffsl_extra_points(special_edges_treatment)
@@ -774,7 +719,7 @@ contains
     end if
 
     ! Compute advective increments, if required --------------------------------
-    if (to_compute_adv_inc .or. to_compute_field_np1 .or. is_dry_field) then
+    if (to_compute_adv_inc .or. to_compute_field_np1) then
       if ( subroutine_timers ) call timer('transport.ffsl_hori_update')
       ! Calculate advective update / increment, depending on equation
       select case ( equation_form )
@@ -800,36 +745,6 @@ contains
                                                    detj_at_w3),                &
                        fv_divergence_y_kernel_type(increment_y, flux,          &
                                                    detj_at_w3) )
-
-          ! @todo this section needs removing following lfric-apps:#32
-          ! Need to pause here to compute rho_d_ffsl that is stored for consistent transport
-          if ( is_dry_field .and. check_any_eqn_consistent() ) then
-            ! Compute stored FFSL density fields by adding increments the
-            ! previous conservative rho fields, and not the advective rho predictor
-            call conservative_field_x%initialise( vector_space = field_fs )
-            call conservative_field_y%initialise( vector_space = field_fs )
-
-            step = transport_runtime%get_tracer_step_ctr()
-            if (step == 1) then
-              rho_d_n => field_n
-            else
-              rho_d_n => transport_runtime%get_rho_d(mesh_id, step)
-            end if
-            call invoke( X_minus_bY(conservative_field_x, rho_d_n, dt,         &
-                                                                increment_x),  &
-                         X_minus_bY(conservative_field_y, rho_d_n, dt,         &
-                                                                increment_y) )
-
-            if ( limited_area .and. topology == topology_non_periodic ) then
-              call overwrite_blending_zone_rtran(conservative_field_x, rho_d_n, &
-                                                 depth=transport_boundary_depth)
-              call overwrite_blending_zone_rtran(conservative_field_y, rho_d_n, &
-                                                 depth=transport_boundary_depth)
-            end if
-
-            call transport_runtime%set_rho_d_ffsl_x(conservative_field_x, step)
-            call transport_runtime%set_rho_d_ffsl_y(conservative_field_y, step)
-          end if
 
           adv_one_x => transport_runtime%get_adv_unity_x(mesh_id, strang)
           adv_one_y => transport_runtime%get_adv_unity_y(mesh_id, strang)
@@ -955,9 +870,6 @@ contains
     type(r_tran_field_type), target :: field_big_halo
 
     type(r_tran_field_type) :: flux_broken
-    type(r_tran_field_type) :: conservative_field_x
-    type(r_tran_field_type) :: conservative_field_y
-    type(r_tran_field_type) :: conservative_field_n
     type(r_tran_field_type) :: increment_x
     type(r_tran_field_type) :: increment_y
 
@@ -1024,9 +936,6 @@ contains
     field_fs => field_x%get_function_space()
 
     ! Initialise fields --------------------------------------------------------
-    call conservative_field_n%initialise( vector_space = field_fs )
-    call conservative_field_x%initialise( vector_space = field_fs )
-    call conservative_field_y%initialise( vector_space = field_fs )
     call increment_x%initialise( vector_space = field_fs )
     call increment_y%initialise( vector_space = field_fs )
 
