@@ -31,9 +31,9 @@ export shumlib_rev=um13.5
 export shumlib_sources=
 export socrates_rev=1605
 export socrates_sources=
-export ukca_rev=3927
+export ukca_rev=3934
 export ukca_sources=
-export um_rev=124572
+export um_rev=124588
 export um_sources=
 
 #### Do not edit the definitions below this line without
