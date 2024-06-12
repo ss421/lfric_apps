@@ -757,10 +757,10 @@ contains
     else
       create_rdef_div_operators = .false.
     end if
-    call create_runtime_constants( mesh_collection,    &
-                                   chi_inventory,      &
-                                   panel_id_inventory, &
-                                   modeldb%clock,      &
+    call create_runtime_constants( modeldb%configuration, &
+                                   chi_inventory,         &
+                                   panel_id_inventory,    &
+                                   modeldb%clock,         &
                                    create_rdef_div_operators )
 
 #ifdef UM_PHYSICS

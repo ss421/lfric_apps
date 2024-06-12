@@ -182,10 +182,10 @@ module shallow_water_model_mod
     ! ---------------------------------------------------------
     check_partitions = .false.
     stencil_depth = get_required_stencil_depth()
-    call init_mesh( modeldb%configuration,                &
-                    modeldb%mpi%get_comm_rank(),          &
-                    modeldb%mpi%get_comm_size(),          &
-                    base_mesh_names, extrusion,   &
+    call init_mesh( modeldb%configuration,       &
+                    modeldb%mpi%get_comm_rank(), &
+                    modeldb%mpi%get_comm_size(), &
+                    base_mesh_names, extrusion,  &
                     stencil_depth, check_partitions )
 
 
@@ -224,9 +224,9 @@ module shallow_water_model_mod
     ! needed by the timestepping algorithms such as mass matrix operators, mass
     ! matrix diagonal fields and the geopotential field
     create_rdef_div_operators = .true.
-    call create_runtime_constants(mesh_collection, chi_inventory,  &
-                                  panel_id_inventory, modeldb%clock, &
-                                  create_rdef_div_operators)
+    call create_runtime_constants( modeldb%configuration, chi_inventory, &
+                                   panel_id_inventory, modeldb%clock,    &
+                                   create_rdef_div_operators )
 
     deallocate(base_mesh_names)
     nullify(chi_inventory, panel_id_inventory)

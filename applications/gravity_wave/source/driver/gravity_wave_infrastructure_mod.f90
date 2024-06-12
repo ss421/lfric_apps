@@ -197,7 +197,7 @@ contains
       apply_partition_check = .true.
     end if
 
-    call init_mesh( modeldb%configuration,                &
+    call init_mesh( modeldb%configuration,        &
                     modeldb%mpi%get_comm_rank(),  &
                     modeldb%mpi%get_comm_size(),  &
                     base_mesh_names,              &
@@ -235,8 +235,8 @@ contains
     ! needed by the timestepping algorithms such as mass matrix operators, mass
     ! matrix diagonal fields and the geopotential field and limited area masks.
     create_rdef_div_operators = .true.
-    call create_runtime_constants( mesh_collection, chi_inventory,  &
-                                   panel_id_inventory, modeldb%clock, &
+    call create_runtime_constants( modeldb%configuration, chi_inventory, &
+                                   panel_id_inventory, modeldb%clock,    &
                                    create_rdef_div_operators )
 
 

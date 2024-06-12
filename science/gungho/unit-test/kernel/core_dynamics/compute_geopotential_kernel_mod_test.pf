@@ -7,8 +7,12 @@
 !-------------------------------------------------------------------------------
 module compute_geopotential_kernel_mod_test
 
-  use constants_mod, only : i_def, r_def
+  use constants_mod, only : i_def, r_def, l_def
   use pFUnit_Mod
+
+  ! Configuration modules
+  use base_mesh_config_mod,      only: GEOMETRY_SPHERICAL
+  use finite_element_config_mod, only: COORD_SYSTEM_XYZ
 
   implicit none
 
@@ -32,66 +36,20 @@ module compute_geopotential_kernel_mod_test
 
   real(r_def), parameter :: gravity  = 10.0_r_def
   real(r_def), parameter :: radius   = 6000000.0_r_def
-  real(r_def), parameter :: omega    = 8.0E-5_r_def
-  real(r_def), parameter :: p_zero   = 100000.0_r_def
-  real(r_def), parameter :: rd       = 300.0_r_def
-  real(r_def), parameter :: cp       = 1000.0_r_def
-  real(r_def), parameter :: scaling  = 1.0_r_def
-  real(r_def), parameter :: f_lat    = 0.0_r_def
+
+  integer(i_def), parameter :: coord_system = COORD_SYSTEM_XYZ
+  integer(i_def), parameter :: geometry     = GEOMETRY_SPHERICAL
+  logical(l_def), parameter :: shallow      = .false.
 
 contains
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   subroutine setUp( this )
 
-    use feign_config_mod,          only : feign_planet_config,      &
-                                          feign_base_mesh_config,   &
-                                          feign_formulation_config, &
-                                          feign_finite_element_config
-    use base_mesh_config_mod,      only : geometry_spherical, &
-                                          topology_fully_periodic
-    use finite_element_config_mod, only : cellshape_quadrilateral,  &
-                                          coord_system_xyz
-    use formulation_config_mod,    only : eos_method_sampled,       &
-                                          moisture_formulation_dry
-
     implicit none
 
     class(compute_geopotential_kernel_test_type), intent(inout) :: this
 
-    ! Base mesh config is needed to ensure spherical geometry is used
-    call feign_base_mesh_config( file_prefix='foo',                &
-                                 prime_mesh_name='dynamics',       &
-                                 geometry=geometry_spherical,      &
-                                 prepartitioned=.false.,           &
-                                 topology=topology_fully_periodic, &
-                                 fplane=.false., f_lat_deg=f_lat )
-
-    call feign_finite_element_config( cellshape=cellshape_quadrilateral, &
-                                      coord_order=0_i_def,               &
-                                      coord_system=coord_system_xyz,     &
-                                      element_order=0_i_def,             &
-                                      rehabilitate=.true.,               &
-                                      vorticity_in_w1=.false. )
-
-    ! Formulation config is needed to ensure shallow atmosphere formulation is
-    ! used
-    call feign_formulation_config(rotating=.true., &
-                                  l_multigrid=.false.,                     &
-                                  lagged_orog=.false.,                     &
-                                  moisture_formulation =                   &
-                                  moisture_formulation_dry,                &
-                                  p2theta_vert=.true.,                     &
-                                  shallow=.false., use_physics=.false.,    &
-                                  use_wavedynamics=.true.,                 &
-                                  use_multires_coupling=.false.,           &
-                                  dry_static_adjust=.false.,               &
-                                  exner_from_eos=.false.,                  &
-                                  eos_method=eos_method_sampled,           &
-                                  dlayer_on = .true.,                      &
-                                  init_exner_bt        = .true.,           &
-                                  si_momentum_equation = .true.,           &
-                                  vector_invariant=.true.)
     allocate( this%map(ndf), &
               this%x(undf),  &
               this%y(undf),  &
@@ -103,14 +61,11 @@ contains
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   subroutine tearDown( this )
 
-    use configuration_mod,        only: final_configuration
-
     implicit none
 
     class(compute_geopotential_kernel_test_type), intent(inout) :: this
 
     deallocate( this%map, this%x, this%y, this%z, this%phi, this%basis )
-    call final_configuration()
 
   end subroutine tearDown
 
@@ -118,7 +73,7 @@ contains
   @Test
   subroutine test_all( this )
 
-    use compute_geopotential_kernel_mod, only : compute_geopotential_code
+    use compute_geopotential_kernel_mod, only: compute_geopotential_code
 
     implicit none
 
@@ -131,17 +86,20 @@ contains
     allocate(this%basis(1,ndf,ndf))
 
     this%map(1) = 1
-    this%x(1) = 0.0_r_def
-    this%y(1) = 0.0_r_def
-    this%z(1) = radius + 10000.0_r_def
+    this%x(1)   = 0.0_r_def
+    this%y(1)   = 0.0_r_def
+    this%z(1)   = radius + 10000.0_r_def
+
     this%basis(1,1,1) = 1.0_r_def
 
     call compute_geopotential_code( nlayers,                          &
-                                   this%phi, this%x, this%y, this%z,  &
-                                   gravity, radius, ndf, undf,        &
-                                   this%map, ndf, undf, this%map, this%basis )
+                                    this%phi, this%x, this%y, this%z, &
+                                    gravity, radius, coord_system,    &
+                                    shallow, geometry,                &
+                                    ndf, undf, this%map, ndf, undf,   &
+                                    this%map, this%basis )
 
-    ! answer = a*g*(1-r/a)
+    ! answer = radius * gravity * (1 - (radius/(radius + height))
     answer = 60000000.0_r_def * ( 1.0_r_def - 6000000.0_r_def/6010000.0_r_def)
     @assertEqual( answer, this%phi(1), tol )
 

@@ -44,7 +44,6 @@ module swe_mixed_operator_alg_mod
                                                log_scratch_space
   use mesh_mod,                          only: mesh_type
   use operator_mod,                      only: operator_type
-  use physical_op_constants_mod,         only: get_coriolis
   use sci_field_vector_mod,              only: field_vector_type
   use sci_linear_operator_mod,           only: abstract_linear_operator_type
   use vector_mod,                        only: abstract_vector_type
@@ -166,7 +165,6 @@ contains
 
     type(operator_type), pointer :: mm_w2, mm_wb => null()
     type(operator_type), pointer :: div, m3_inv => null()
-    type(operator_type), pointer :: coriolis => null()
     type(mesh_type), pointer     :: mesh => null()
 
 
@@ -197,8 +195,6 @@ contains
     mm_w2 => get_mass_matrix(W2, mesh%get_id())
     ! Extract divergence operator
     div   => get_div(mesh%get_id())
-    ! Extract Coriolis operator
-    coriolis => get_coriolis(mesh%get_id())
     ! Extract inverse geopotential mass matrix
     m3_inv => get_inverse_w3_mass_matrix(mesh%get_id())
 

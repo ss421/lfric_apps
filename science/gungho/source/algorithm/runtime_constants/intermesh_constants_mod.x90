@@ -24,7 +24,8 @@ module intermesh_constants_mod
   use fs_continuity_mod,                 only: W2, W3, Wtheta
   use inventory_by_mesh_mod,             only: inventory_by_mesh_type
   use log_mod,                           only: log_event, LOG_LEVEL_INFO
-  use mesh_collection_mod,               only: mesh_collection_type
+  use mesh_collection_mod,               only: mesh_collection_type, &
+                                               mesh_collection
   use mesh_mod,                          only: mesh_type
   use operator_mod,                      only: operator_type
   use quadrature_xyoz_mod,               only: quadrature_xyoz_type
@@ -78,13 +79,13 @@ module intermesh_constants_mod
 
 contains
   !>@brief Subroutine to create the intermesh mapping constants
-  !> @param[in] mesh_collection      Collection of model's meshes
-  subroutine create_intermesh_constants(mesh_collection, use_multires_coupling)
+  !>@param[in] use_multires_coupling
+  subroutine create_intermesh_constants( use_multires_coupling )
+
     implicit none
 
     ! Arguments
-    type(mesh_collection_type), intent(in) :: mesh_collection
-    logical(kind=l_def),        intent(in) :: use_multires_coupling
+    logical(kind=l_def), intent(in) :: use_multires_coupling
 
     ! Internal variables
     type(mesh_type),            pointer :: target_mesh => null()

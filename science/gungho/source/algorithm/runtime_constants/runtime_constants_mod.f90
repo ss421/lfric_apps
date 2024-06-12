@@ -22,12 +22,14 @@ module runtime_constants_mod
   use io_config_mod,           only: subroutine_timers
   use log_mod,                 only: log_event, LOG_LEVEL_INFO, &
                                      LOG_LEVEL_ERROR
-  use mesh_collection_mod,     only: mesh_collection_type
+  use mesh_collection_mod,     only: mesh_collection_type, mesh_collection
   use mesh_mod,                only: mesh_type
   use model_clock_mod,         only: model_clock_type
   use multigrid_config_mod,    only: chain_mesh_tags
   use multires_coupling_config_mod, &
                                only: multires_coupling_mesh_tags
+
+  use namelist_collection_mod, only: namelist_collection_type
   use runtime_tools_mod,       only: primary_mesh_label,      &
                                      shifted_mesh_label,      &
                                      double_level_mesh_label, &
@@ -46,17 +48,17 @@ module runtime_constants_mod
 
 contains
   !>@brief Subroutine to create the runtime constants
-  !> @param[in] mesh_collection      The collection of meshes to loop over
+  !> @param[in] configuration        Model configuration collection
   !> @param[in] chi_inventory        Stores the coordinate fields by their mesh
   !> @param[in] panel_id_inventory   Stores the panel id fields by their mesh
   !> @param[in] model_clock          Model time.
   !> @param[in] create_rdef_div_flag Optional flag as to whether rdef div
   !!                                 operators need creating.
-  subroutine create_runtime_constants(mesh_collection,       &
-                                      chi_inventory,         &
-                                      panel_id_inventory,    &
-                                      model_clock,           &
-                                      create_rdef_div_flag)
+  subroutine create_runtime_constants( configuration,      &
+                                       chi_inventory,      &
+                                       panel_id_inventory, &
+                                       model_clock,        &
+                                       create_rdef_div_flag)
 
     ! Other runtime_constants modules
     use wt_advective_update_alg_mod,  only: wt_advective_update_set_num_meshes
@@ -72,11 +74,11 @@ contains
 
     implicit none
 
-    type(mesh_collection_type),    intent(in) :: mesh_collection
-    type(inventory_by_mesh_type),  intent(in) :: chi_inventory
-    type(inventory_by_mesh_type),  intent(in) :: panel_id_inventory
-    class(model_clock_type),       intent(in) :: model_clock
-    logical(kind=l_def), optional, intent(in) :: create_rdef_div_flag
+    type(namelist_collection_type), intent(in) :: configuration
+    type(inventory_by_mesh_type),   intent(in) :: chi_inventory
+    type(inventory_by_mesh_type),   intent(in) :: panel_id_inventory
+    class(model_clock_type),        intent(in) :: model_clock
+    logical(kind=l_def), optional,  intent(in) :: create_rdef_div_flag
 
     type(mesh_type),  pointer :: mesh => null()
     type(field_type), pointer :: chi(:) => null()
@@ -224,11 +226,12 @@ contains
                               model_clock,   &
                               create_rdef_div_operators)
 
-    call create_physical_op_constants(mesh_id_list,  &
-                                      chi_list,      &
-                                      panel_id_list, &
-                                      label_list,    &
-                                      model_clock )
+    call create_physical_op_constants( configuration, &
+                                       mesh_id_list,  &
+                                       chi_list,      &
+                                       panel_id_list, &
+                                       label_list,    &
+                                       model_clock )
 
     if ( limited_area ) then
       call create_limited_area_constants(mesh_id_list, &
@@ -236,8 +239,7 @@ contains
                                          label_list )
     end if
 
-    call create_intermesh_constants(mesh_collection, &
-                                    use_multires_coupling)
+    call create_intermesh_constants( use_multires_coupling )
 
     ! Set-up arrays for transport coefficients
     call runge_kutta_init()

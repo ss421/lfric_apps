@@ -349,10 +349,10 @@ contains
 
     ! Create runtime_constants object.
     create_rdef_div_operators = .true.
-    call create_runtime_constants( mesh_collection,    &
-                                   chi_inventory,      &
-                                   panel_id_inventory, &
-                                   modeldb%clock,      &
+    call create_runtime_constants( modeldb%configuration, &
+                                   chi_inventory,         &
+                                   panel_id_inventory,    &
+                                   modeldb%clock,         &
                                    create_rdef_div_operators )
 
     ! Set up transport runtime collection type

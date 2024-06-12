@@ -14,7 +14,8 @@
 module physical_op_constants_mod
 
   ! Infrastructure
-  use constants_mod,                      only: i_def, r_def, l_def
+  use constants_mod,                      only: i_def, r_def, l_def, str_def
+  use extrusion_mod,                      only: TWOD
   use field_mod,                          only: field_type
   use field_parent_mod,                   only: write_interface
   use field_collection_mod,               only: field_collection_type
@@ -22,32 +23,18 @@ module physical_op_constants_mod
   use function_space_collection_mod,      only: function_space_collection
   use fs_continuity_mod,                  only: W1, W2, W2broken, W3, Wtheta
   use inventory_by_mesh_mod,              only: inventory_by_mesh_type
-  use io_config_mod,                      only: subroutine_timers
-  use log_mod,                            only: log_event, LOG_LEVEL_INFO, &
+  use log_mod,                            only: log_event, LOG_LEVEL_DEBUG, &
                                                 LOG_LEVEL_ERROR
   use lfric_xios_write_mod,               only: write_field_generic
-  use mesh_mod,                           only: mesh_type
   use mesh_collection_mod,                only: mesh_collection
+  use mesh_mod,                           only: mesh_type
+  use namelist_collection_mod,            only: namelist_collection_type
+  use namelist_mod,                       only: namelist_type
   use model_clock_mod,                    only: model_clock_type
-  use extrusion_mod,                      only: TWOD
-  use extrusion_config_mod,               only: domain_top
-
   use operator_mod,                       only: operator_type
   use quadrature_xyoz_mod,                only: quadrature_xyoz_type
   use timer_mod,                          only: timer
 
-  ! Configuration
-  use finite_element_config_mod,          only: element_order,    &
-                                                nqp_exact,        &
-                                                rehabilitate
-  use formulation_config_mod,             only: rotating, use_physics
-  use mixing_config_mod,                  only: smagorinsky
-  use physics_config_mod,                 only: sample_physics_winds
-  use planet_config_mod,                  only: radius, gravity, &
-                                                scaled_omega, scaled_radius
-  use base_mesh_config_mod,               only: f_lat, geometry, geometry_spherical
-
-  ! Other algorithms
   use geometric_constants_mod,            only: get_dA_at_w2, get_height, &
                                                 get_latitude
   use fem_constants_mod,                  only: get_detj_at_w2, get_qr
@@ -67,10 +54,12 @@ module physical_op_constants_mod
   use project_ws_to_w1_operator_kernel_mod,  &
                                           only: project_ws_to_w1_operator_kernel_type
   use get_Pnm_star_kernel_mod,            only: get_Pnm_star_kernel_type
-  use stochastic_physics_config_mod,      only: use_spt, stph_spectral_dim, &
-                                                stph_n_max, use_skeb, &
-                                                skeb_rot_du, skeb_rot_du_fe
 #endif
+
+  ! Configuration modules
+  use base_mesh_config_mod,          only: GEOMETRY_SPHERICAL
+  use section_choice_config_mod,     only: STOCHASTIC_PHYSICS_UM
+  use stochastic_physics_config_mod, only: SKEB_ROT_DU_FE
 
   implicit none
 
@@ -136,20 +125,24 @@ module physical_op_constants_mod
 contains
 
   !> @brief Subroutine to create the physical operator constants
+  !> @param[in] configuration        Model configuration collection
   !> @param[in] mesh_id_list         List of mesh_ids
   !> @param[in] chi_list             List of coordinate fields
   !> @param[in] panel_id_list        List of panel_id fields
   !> @param[in] label_list           List of labels for meshes
   !> @param[in] model_clock          Time in the model.
-  subroutine create_physical_op_constants(mesh_id_list,  &
-                                          chi_list,      &
-                                          panel_id_list, &
-                                          label_list,    &
-                                          model_clock )
+  subroutine create_physical_op_constants( configuration, &
+                                           mesh_id_list,  &
+                                           chi_list,      &
+                                           panel_id_list, &
+                                           label_list,    &
+                                           model_clock )
 
     implicit none
 
     ! Arguments
+    type(namelist_collection_type), intent(in) :: configuration
+
     integer(kind=i_def),     intent(in) :: mesh_id_list(:)
     type(field_type),        intent(in) :: chi_list(:,:)
     type(field_type),        intent(in) :: panel_id_list(:)
@@ -221,8 +214,99 @@ contains
 
     real(r_def) :: cast_delta_t
 
+    ! Local configuration variables
+    type(namelist_type), pointer :: base_mesh_nml
+    type(namelist_type), pointer :: extrusion_nml
+    type(namelist_type), pointer :: io_nml
+    type(namelist_type), pointer :: finite_element_nml
+    type(namelist_type), pointer :: formulation_nml
+    type(namelist_type), pointer :: planet_nml
+
+    integer(i_def) :: geometry
+    integer(i_def) :: coord_system
+    logical(l_def) :: shallow
+    logical(l_def) :: rotating
+    logical(l_def) :: use_physics
+    logical(l_def) :: rehabilitate
+    logical(l_def) :: subroutine_timers
+
+    real(r_def) :: gravity
+    real(r_def) :: f_lat
+    real(r_def) :: domain_top
+    real(r_def) :: radius
+    real(r_def) :: scaled_omega
+    real(r_def) :: scaled_radius
+    integer(i_def) :: element_order
+
+    logical(l_def) :: sample_physics_winds
+
+    type(namelist_type), pointer :: section_choice_nml
+    type(namelist_type), pointer :: stochastic_physics_nml
+    type(namelist_type), pointer :: physics_nml
+
+    integer(i_def) :: stochastic_physics
+
+    logical(l_def) :: use_spt
+    logical(l_def) :: use_skeb
+    integer(i_def) :: stph_spectral_dim
+    integer(i_def) :: stph_n_max
+    integer(i_def) :: skeb_rot_du
+
+    !============================================================================
+    ! 0.0 Extract configuration variables
+    !============================================================================
+    base_mesh_nml      => configuration%get_namelist('base_mesh')
+    extrusion_nml      => configuration%get_namelist('extrusion')
+    finite_element_nml => configuration%get_namelist('finite_element')
+    formulation_nml    => configuration%get_namelist('formulation')
+    planet_nml         => configuration%get_namelist('planet')
+    io_nml             => configuration%get_namelist('io')
+
+    sample_physics_winds = .false.
+    if ( configuration%namelist_exists('physics') ) then
+      physics_nml => configuration%get_namelist('physics')
+      call physics_nml%get_value( 'sample_physics_winds', sample_physics_winds )
+      nullify(physics_nml)
+    end if
+
+    use_spt  = .false.
+    use_skeb = .false.
+
+    nullify(section_choice_nml, stochastic_physics_nml)
+    if ( configuration%namelist_exists('section_choice') ) then
+      section_choice_nml => configuration%get_namelist('section_choice')
+      call section_choice_nml%get_value( 'stochastic_physics', stochastic_physics )
+      if ( stochastic_physics == STOCHASTIC_PHYSICS_UM ) then
+        stochastic_physics_nml => configuration%get_namelist('stochastic_physics')
+        call stochastic_physics_nml%get_value( 'use_spt', use_spt )
+        call stochastic_physics_nml%get_value( 'stph_spectral_dim', &
+                                                stph_spectral_dim )
+        call stochastic_physics_nml%get_value( 'stph_n_max', stph_n_max )
+        call stochastic_physics_nml%get_value( 'use_skeb', use_skeb )
+        call stochastic_physics_nml%get_value( 'skeb_rot_du', skeb_rot_du )
+      end if
+
+    end if
+
+    call base_mesh_nml%get_value( 'geometry', geometry )
+    call base_mesh_nml%get_value( 'f_lat', f_lat )
+    call formulation_nml%get_value( 'shallow', shallow )
+    call formulation_nml%get_value( 'rotating', rotating )
+    call formulation_nml%get_value( 'use_physics', use_physics )
+    call finite_element_nml%get_value( 'coord_system', coord_system )
+    call finite_element_nml%get_value( 'element_order', element_order )
+    call finite_element_nml%get_value( 'rehabilitate', rehabilitate )
+    call io_nml%get_value( 'subroutine_timers', subroutine_timers )
+    call extrusion_nml%get_value( 'domain_top', domain_top )
+    call planet_nml%get_value( 'radius', radius )
+    call planet_nml%get_value( 'gravity', gravity )
+    call planet_nml%get_value( 'scaled_omega', scaled_omega )
+    call planet_nml%get_value( 'scaled_radius', scaled_radius )
+
+    !============================================================================
+
     if ( subroutine_timers ) call timer('physical_op_constants_alg')
-    call log_event( "Gungho: creating physical_op_constants", LOG_LEVEL_INFO )
+    call log_event( "Gungho: creating physical_op_constants", LOG_LEVEL_DEBUG )
 
     num_meshes = size(mesh_id_list)
 
@@ -273,10 +357,13 @@ contains
           call invoke( compute_geopotential_kernel_type( geopotential,  &
                                                          chi_list(:,i), &
                                                          gravity,       &
-                                                         scaled_radius ) )
+                                                         scaled_radius, &
+                                                         coord_system,  &
+                                                         shallow,       &
+                                                         geometry ) )
         else
-          call log_event( "Geopotential computation needs modifying for standard &
-                           W3 mapping", LOG_LEVEL_ERROR )
+          call log_event( "Geopotential computation needs modifying "// &
+                          "for standard W3 mapping", LOG_LEVEL_ERROR )
         end if
         nullify(geopotential)
 
@@ -291,6 +378,7 @@ contains
                                                            f_lat, qr) )
           nullify(coriolis)
         end if
+
       end if
 
       !=========================== Physics objects ============================!
@@ -477,7 +565,7 @@ contains
 
     nullify(w1_k0_fs, w2_k0_fs, w2_fs, w2b_fs, w3_fs, wtheta_k0_fs, qr, mesh)
 
-    call log_event( "Gungho: created physical_op_constants", LOG_LEVEL_INFO )
+    call log_event( "Gungho: created physical_op_constants", LOG_LEVEL_DEBUG )
     if ( subroutine_timers ) call timer('physical_op_constants_alg')
 
   end subroutine create_physical_op_constants
@@ -487,20 +575,20 @@ contains
   !> @param[in] mesh_id The ID of the mesh to get the object for
   !> @return The Coriolis operator
   function get_coriolis(mesh_id) result(coriolis_op)
+
     implicit none
+
     integer(kind=i_def), intent(in) :: mesh_id
-    type(mesh_type),        pointer :: mesh => null()
+    type(mesh_type),        pointer :: mesh
     type(operator_type),    pointer :: coriolis_op
 
-    mesh => mesh_collection%get_mesh(mesh_id)
-
-    if ( rotating ) then
+    mesh => null()
+    coriolis_op => null()
+    if ( coriolis_inventory%paired_object_exists(mesh_id) ) then
+      mesh => mesh_collection%get_mesh(mesh_id)
       call coriolis_inventory%get_operator(mesh, coriolis_op)
-    else
-      call log_event( "Coriolis operator not computed for non-rotating flow", &
-                      LOG_LEVEL_ERROR)
+      nullify(mesh)
     end if
-    nullify(mesh)
 
   end function get_coriolis
 
