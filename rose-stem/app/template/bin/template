@@ -36,3 +36,11 @@ OPERATOR_TEMPLATE=$LFRIC_CORE_DIR/infrastructure/source/operator/operator_mod.t9
 
 $TEMPLATERATOR $OPERATOR_TEMPLATE -o $WORKING_DIR/operator_real32_mod.f90 -s type=real -s kind=real32
 $TEMPLATERATOR $OPERATOR_TEMPLATE -o $WORKING_DIR/operator_real64_mod.f90 -s type=real -s kind=real64
+
+# Different precision scalars
+#
+SCALAR_TEMPLATE=$LFRIC_CORE_DIR/infrastructure/source/scalar/scalar_mod.t90
+
+$TEMPLATERATOR $SCALAR_TEMPLATE -o $WORKING_DIR/scalar_real32_mod.f90 -s type=real -s kind=real32
+$TEMPLATERATOR $SCALAR_TEMPLATE -o $WORKING_DIR/scalar_real64_mod.f90 -s type=real -s kind=real64
+$TEMPLATERATOR $SCALAR_TEMPLATE -o $WORKING_DIR/scalar_int32_mod.f90 -s type=integer -s kind=int32
