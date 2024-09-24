@@ -435,6 +435,18 @@
         "plot_str": "plot_zonal.py $NODAL_DATA_DIR/lfric_averages.nc $PLOT_DIR earth-like uniform 32 33"
     }) %}
 
+{% elif task_ns.conf_name == "force_profile-BiP4x4-600x400" %}
+
+    {% do task_dict.update({
+        "opt_confs": ["force_profile"],
+        "resolution": "BiP4x4-600x400",
+        "DT": 60,
+        "tsteps": 90,
+        "wallclock": 5,
+        "kgo_checks": ["checksum"],
+        "plot_str": "profile_plot.py $NODAL_DATA_DIR/lfric_diag.nc theta:m_v linear 38 10 $PLOT_DIR",
+    }) %}
+
 {% elif task_ns.conf_name == "canned" %}
 
     {% do task_dict.update({

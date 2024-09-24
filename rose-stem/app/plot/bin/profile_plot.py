@@ -35,7 +35,7 @@ def load_cube_by_varname(filename, var):
 def make_extrusion(extrusion, number_of_layers, domain_top):
 
     if extrusion == 'linear':
-        z1d = np.linspace(0.0, domain_top, nlayers+1)
+        z1d = np.linspace(0.0, domain_top, number_of_layers+1)
     elif extrusion == 'quadratic':
         z1d = domain_top * np.array([(float(k) / float(number_of_layers)) ** 2
                                       for k in range(number_of_layers+1)])

@@ -81,12 +81,13 @@ contains
   !> @param[in]     exner              Exner pressure
   !> @param[in]     exner_in_wth       Exner pressure on Wtheta space
   !> @param[in]     dt                 The model timestep length
+  !> @param[in]     time_now           Current model time (seconds)
   !> @param[out]    dtheta_forcing     Theta increment from external forcing
   !> @param[out]    du_forcing         Wind increment from external forcing
   !> @param[in,out] theta_forcing_done Flag to say if theta code run
   !> @param[in,out] wind_forcing_done  Flag to say if wind code run
   subroutine external_forcing_alg(derived_fields, u, theta, exner, exner_in_wth, &
-                                  dt, dtheta_forcing, du_forcing,                &
+                                  dt, time_now, dtheta_forcing, du_forcing,      &
                                   theta_forcing_done, wind_forcing_done)
 
     implicit none
@@ -94,7 +95,7 @@ contains
     type( field_collection_type ), intent(in) :: derived_fields
     type( field_type ), intent( in )  :: u, theta, exner, exner_in_wth
     type( field_type ), intent( out ) :: dtheta_forcing, du_forcing
-    real( kind=r_def ), intent( in )  :: dt
+    real( kind=r_def ), intent( in )  :: dt, time_now
 
     logical( kind=l_def ), intent(inout) :: theta_forcing_done, &
                                             wind_forcing_done
@@ -179,7 +180,7 @@ contains
 
         case(theta_forcing_temp_tend)
 
-          call temp_tend_profile_alg( dtheta_forcing, exner_in_wth )
+          call temp_tend_profile_alg( dtheta_forcing, exner_in_wth, time_now )
 
         case default
 
