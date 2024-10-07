@@ -299,8 +299,8 @@ contains
     use cv_set_dependent_switches_mod, only: cv_set_dependent_switches
     use dust_parameters_mod, only: i_dust, i_dust_off, i_dust_flux,        &
          dust_veg_emiss, us_am, sm_corr, horiz_d, l_fix_size_dist,         &
-         l_twobin_dust, dust_parameters_load,                              &
-         dust_parameters_unload
+         l_twobin_dust, dust_parameters_load, l_dust_emp_sc,               &
+         l_dust_clay_as_max, dust_bl_mixfac, dust_parameters_unload
     use electric_inputs_mod, only: electric_method, no_lightning, em_mccaul, &
                                    k1, k2, gwp_thresh, tiwp_thresh,          &
                                    storm_definition, graupel_and_ice
@@ -939,6 +939,9 @@ contains
       horiz_d = 2.25_r_um
       l_fix_size_dist = .false.
       l_twobin_dust = .false.
+      l_dust_emp_sc = .false.
+      l_dust_clay_as_max = .false.
+      dust_bl_mixfac = 1.0_r_um
     else
       i_dust = i_dust_off
     end if

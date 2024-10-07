@@ -748,7 +748,8 @@ contains
 
     ! fields on land points
     real(r_um), dimension(:), allocatable ::                                 &
-         hcons_soilt, rhostar_land, sand_land, clay_land, emis_soil
+         hcons_soilt, rhostar_land, sand_land, clay_land, emis_soil,         &
+         dust_emsc_land
 
     ! fields on land points and tiles
     real(r_um), dimension(:,:), allocatable ::                               &
@@ -1604,6 +1605,7 @@ contains
       allocate(sand_land(land_field))
       allocate(clay_land(land_field))
       allocate(mrel_land(land_field,ndivl))
+      allocate(dust_emsc_land(land_field))
       !put fields into land arrays
       do l = 1, land_field
         rhostar_land(l) = rhostar(ainfo%land_index(l),1)
@@ -1615,7 +1617,7 @@ contains
         mrel_land(l,4) = real(dust_div_mrel(map_dust(1,ainfo%land_index(l)) + 3), r_um)
         mrel_land(l,5) = real(dust_div_mrel(map_dust(1,ainfo%land_index(l)) + 4), r_um)
         mrel_land(l,6) = real(dust_div_mrel(map_dust(1,ainfo%land_index(l)) + 5), r_um)
-
+        dust_emsc_land(l) = 1.0_r_um
         ! Soil moisture content (kg m-2, soil_layer_moisture)
         do m = 1, sm_levels
           soil_layer_moisture(l,m) = real(soil_moisture(map_soil(1,ainfo%land_index(l))+m-1), r_um)
@@ -1627,7 +1629,7 @@ contains
              land_field,ntiles,ainfo%surft_pts,ainfo%surft_index,coast%fland,  &
              progs%tstar_surft,rhostar_land,soil_layer_moisture,               &
              progs%snow_surft, aerotype%u_s_std_surft,mrel_land,clay_land,     &
-             sand_land, jules_vars%ho2r2_orog_gb,                              &
+             sand_land, jules_vars%ho2r2_orog_gb,dust_emsc_land,               &
              ! OUT arguments
              dust_flux_surft,u_s_t_tile,u_s_t_dry_tile                         &
              )
