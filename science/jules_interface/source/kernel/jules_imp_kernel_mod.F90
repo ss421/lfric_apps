@@ -143,7 +143,9 @@ contains
   !>             as documented in UMDP24
   !>          NB This version uses winds in w3 space (i.e. A-grid)
   !> @param[in]     nlayers              Number of layers
-  !> @param[in]     outer                Outer loop counter
+  !> @param[in]     seg_len              Number of horizontal points
+  !> @param[in]     outer                Outer loop counter of dynamics SI scheme
+  !> @param[in]     loop                 Loop counter of BL predictor-corrector scheme
   !> @param[in]     wetrho_in_w3         Wet density field in density space
   !> @param[in]     exner_in_wth         Exner pressure field in wth space
   !> @param[in]     height_wth           Height of theta space above surface
@@ -1627,6 +1629,8 @@ contains
           ! tstar on sea surfaces will not have been updated so, to try and maintain
           ! consistency between tstar and the supplied surface flux, update estimate
           ! of tstar with the increment to level 1 temperature
+          ! N.B. dtl1_2d is now the final level 1 T increment, not the first
+          ! guess as it was on loop 1
           do i = 1, seg_len
             tile_temperature(map_tile(1,i)+first_sea_tile-1) =                 &
                  tile_temperature(map_tile(1,i)+first_sea_tile-1)+dtl1_2d(map_2d(1,i))

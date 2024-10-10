@@ -157,7 +157,8 @@ contains
     !---------------------------------------
     ! UM modules containing switches or global constants
     !---------------------------------------
-    use bl_option_mod, only: l_noice_in_turb, alpha_cd, puns, pstb
+    use bl_option_mod, only: l_noice_in_turb, alpha_cd, puns, pstb, &
+         flux_bc_opt, specified_fluxes_only
     use nlsizes_namelist_mod, only: bl_levels
     use planet_constants_mod, only: planet_radius
 
@@ -395,13 +396,21 @@ contains
         dtl1_2d(map_2d(1,i)) = dtl1_1(i,1)
         ct_ctq1_2d(map_2d(1,i)) = ctctq1_1(i,1)
       end do
-    else
+    else !loop = 2
       do k = 0, bl_levels-1
         do i = 1, seg_len
           heat_flux_bl(map_w3(1,i)+k) = ftl(i,1,k+1)
           moist_flux_bl(map_w3(1,i)+k) = fqw(i,1,k+1)
         end do
       end do
+      ! With specified fluxes only, we need to update the surface temperature
+      ! using the final dtl value at level 1. We use the dtl1_2d field to
+      ! carry this to jules_imp as it's normally only used on the 1st loop
+      if (flux_bc_opt == specified_fluxes_only) then
+        do i = 1, seg_len
+          dtl1_2d(map_2d(1,i)) = dtl(i,1,1)
+        end do
+      end if
     end if
 
   end subroutine bl_imp_code
