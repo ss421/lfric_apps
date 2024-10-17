@@ -28,8 +28,8 @@ module lfric2lfric_infrastructure_mod
   use inventory_by_mesh_mod,      only : inventory_by_mesh_type
   use io_context_mod,             only : callback_clock_arg
   use linked_list_mod,            only : linked_list_type
-  use lfric_xios_context_mod,     only : lfric_xios_context_type, &
-                                         advance
+  use lfric_xios_context_mod,     only : lfric_xios_context_type
+  use lfric_xios_action_mod,      only : advance
   use log_mod,                    only : log_event,       &
                                          log_level_error, &
                                          log_level_debug
