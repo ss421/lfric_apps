@@ -1,0 +1,28 @@
+# List of ctldata required for the lfric_apps test suite.
+# File installs from fcm mirrors should be done centrally through this file
+# instead of through rose-app.conf files to avoid network connection issues.
+# Each line should be of format:
+#
+# <fcm source> <name of install dir>
+#
+# Files will be installed to CYLC_WORKFLOW_DIR/share/source/ctldata/<name>
+#
+# rose-app.conf entries should be of format:
+#
+# [file:spec]
+# mode=symlink+
+# source=$SOURCE_ROOT/ctldata/<name>
+
+
+# lut files
+fcm:um_aux.xm/trunk/ctldata/UKCA/radaer/ga7_1@vn1.18 lut
+
+# precalc files
+fcm:um_aux.xm/trunk/ctldata/spectral/ga7_1@vn1.18 precalc
+
+# spec files
+fcm:socrates.xm_tr/data/spectra/ga9@um13.3 spec_ga9_um133
+fcm:spectral.xm_tr/gj1214b@1613 spec_r1613
+fcm:socrates.xm_tr/data/spectra/ga7@um13.3 spec_ga7_um133
+fcm:spectral.xm_tr/thai@1613 spec_thai_r1613
+fcm:socrates.xm_tr/data/spectra/ga9@um12.1 spec_ga9_um121

@@ -16,16 +16,7 @@
 
     [[{{task}}]]
         inherit = EXPORT-SOURCE, {{SITE|upper}}_ORIG
-        script  = """
-                  mkdir -p `dirname $SOURCE_ROOT/core`
-                  mkdir -p `dirname $SOURCE_ROOT/apps`
-
-                  echo Source lfric_apps: $SOURCE_LFRIC_APPS
-                  echo Source lfric_core: $SOURCE_LFRIC_CORE
-
-                  fcm export --force $SOURCE_LFRIC_APPS $SOURCE_ROOT/apps
-                  fcm export --force $SOURCE_LFRIC_CORE $SOURCE_ROOT/core
-                  """
+        script  = "rose task-run --app-key=export_source"
         [[[environment]]]
             SOURCE_DIRECTORY = $SOURCE_ROOT
     {% if lfric_core_source.startswith("fcm:") %}

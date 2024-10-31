@@ -6,6 +6,7 @@
 {% do LOG.debug("Entered site/meto/suite_config.cylc") %}
 
     [[METO_ORIG]]
+        pre-script = "module load scitools"
 {% if site_vars["meto_xc40"] == "xcsc" %}
         platform = {{site_vars["meto_xc40"]}}
 {% else %}
