@@ -370,7 +370,7 @@ contains
 
     ! Compute anything required for consistency
     dynamics_transport_runtime => get_transport_runtime(primary_mesh)
-    call dynamics_transport_runtime%shift_dry_fields()
+    call dynamics_transport_runtime%shift_dry_fields(use_total_quantities=.false.)
     call dynamics_transport_runtime%compute_consistent_quantities(shifted_mesh)
 
     ! Transport conservative W3 tracer
@@ -439,7 +439,7 @@ contains
     if (use_multires_coupling .and. (use_w3_aerosol .or. use_wt_aerosol)) then
       aerosol_transport_runtime => get_transport_runtime(aerosol_prime_mesh)
       call aerosol_transport_runtime%restrict_dry_fields(dynamics_transport_runtime)
-      call aerosol_transport_runtime%shift_dry_fields()
+      call aerosol_transport_runtime%shift_dry_fields(use_total_quantities=.false.)
     end if
 
     ! Transport coarse W3 tracer

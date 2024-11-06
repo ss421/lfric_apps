@@ -272,6 +272,7 @@ contains
     logical(kind=l_def) :: strang_vhv
     integer(kind=i_def) :: step_with_substep
     integer(kind=i_def) :: step_p1_with_substep
+    logical(kind=l_def) :: first_order_cheap_update
 
     ! Internal fields
     type(r_tran_field_type) :: dz_w3
@@ -280,6 +281,7 @@ contains
     integer(kind=i_def) :: mesh_id
     integer(kind=i_def) :: step
     real(kind=r_tran)   :: min_val
+    integer(kind=i_def) :: vertical_order
 
     ! Get pre-computed objects and set pointers --------------------------------
     mesh_id = field_n%get_mesh_id()
@@ -296,6 +298,15 @@ contains
     reversible = transport_metadata%get_reversible()
     equation_form = transport_metadata%get_equation_form()
     strang_vhv = ( transport_metadata%get_splitting() ==  splitting_strang_vhv )
+    first_order_cheap_update = transport_runtime%get_apply_cheap_update()
+
+    if (first_order_cheap_update) then
+      ! Use first order transport
+      vertical_order = 0_i_def
+    else
+      ! Use full order transport
+      vertical_order = order
+    end if
 
     ! Initialise fields used by all splitting options --------------------------
     call mass_flux%initialise( vector_space = w2v_fs )
@@ -329,7 +340,7 @@ contains
       call log_event( "ffsl_1d_vert_flux_alg: Unrecognized equation form", LOG_LEVEL_ERROR )
     end select
 
-    if ( order /= 0 ) then
+    if ( vertical_order /= 0 ) then
       ! Get objects only needed for high order flux
       dz_w3_rdef => get_dz_w3(mesh_id)
       call dz_w3%initialise( vector_space = field_fs )
@@ -337,7 +348,7 @@ contains
     end if
 
     ! Compute fluxes
-    select case ( order )
+    select case ( vertical_order )
     case ( 0 )
       ! Constant reconstruction
       call invoke( ffsl_flux_z_constant_kernel_type(mass_flux,                 &

@@ -25,6 +25,7 @@ module gungho_transport_control_alg_mod
   use multires_coupling_config_mod,      only: coarse_aerosol_transport, &
                                                aerosol_mesh_name
   use transport_config_mod,              only: transport_ageofair
+  use transport_enumerated_types_mod,    only: equation_form_consistent
   use transport_metadata_mod,            only: transport_metadata_type
   use transport_runtime_collection_mod,  only: init_transport_runtime_collection, &
                                                set_transport_runtime,             &
@@ -265,6 +266,7 @@ contains
     type(field_type)    :: fields_np1(bundle_size)
     type(field_type)    :: wind_for_adv
     logical(kind=l_def) :: do_moisture_diagnostics
+    logical(kind=l_def) :: redo_last_outer_runtime
     real(r_def)         :: cast_dt
     type(field_type)    :: rho_d_np1
     type(field_type)    :: aerosol_wind_n, aerosol_wind_np1
@@ -310,19 +312,27 @@ contains
       primary_mesh => wind_n%get_mesh()
       shifted_mesh => mesh_collection%get_mesh(primary_mesh, SHIFTED)
 
-      call set_transport_runtime( wind_n, wind_np1,          &
+      call set_transport_runtime( wind_for_adv, wind_np1,    &
                                   model_clock, outer,        &
                                   cheap_update,              &
                                   rho_d_n_rdef=rho_d_n_ptr,  &
                                   shifted_mesh=shifted_mesh )
     else
-      call set_transport_runtime( wind_n, wind_np1,          &
+      call set_transport_runtime( wind_for_adv, wind_np1,    &
                                   model_clock, outer,        &
                                   cheap_update,              &
                                   rho_d_n_rdef=rho_d_n_ptr )
     end if
 
+    ! Get time step from clock
     cast_dt = real(model_clock%get_seconds_per_step(), r_def)
+
+    if (cheap_update .and. outer == outer_iterations) then
+      ! Recompute transport runtime for last_outer tracers
+      redo_last_outer_runtime = .true.
+    else
+      redo_last_outer_runtime = .false.
+    end if
 
     ! Initialise
     call clone_bundle(advected_fields, fields_np1, bundle_size)
@@ -349,7 +359,7 @@ contains
     ! Compute any quantities required for consistent transport
     if ( check_any_shifted() ) then
       dynamics_transport_runtime => get_transport_runtime(primary_mesh)
-      call dynamics_transport_runtime%shift_dry_fields()
+      call dynamics_transport_runtime%shift_dry_fields(use_total_quantities=.false.)
       call dynamics_transport_runtime%compute_consistent_quantities(shifted_mesh)
     end if
 
@@ -383,6 +393,7 @@ contains
       ! Transport tracers which are active in fast physics, and therefore need
       ! transporting on every outer iteration
       if (present(adv_tracer_all_outer) .and. check_transport_name('adv_tracer') ) then
+        call log_event( "Transporting advective tracers (all)...", LOG_LEVEL_INFO)
         transport_metadata => transport_metadata_collection%get_transport_metadata('adv_tracer')
         call tracer_collection_transport_alg(adv_tracer_all_outer,            &
                                              adv_tracer_all_outer_after_slow, &
@@ -390,6 +401,7 @@ contains
                                              transport_metadata)
       end if
       if (present(con_tracer_all_outer) .and. check_transport_name('con_tracer') ) then
+        call log_event( "Transporting conservative tracers (all)...", LOG_LEVEL_INFO)
         transport_metadata => transport_metadata_collection%get_transport_metadata('con_tracer')
         call tracer_collection_transport_alg(con_tracer_all_outer,            &
                                              con_tracer_all_outer_after_slow, &
@@ -412,8 +424,12 @@ contains
       ! ---------------------------------------------------------------------- !
       ! Transport fields which aren't needed in fast physics, and therefore
       ! only need transporting on the final outer iteration
+
       if (outer == outer_iterations) then
         if (present(con_tracer_last_outer) .and. check_transport_name('con_tracer') ) then
+
+          ! Get the transport metadata for last outer conservative tracers
+          transport_metadata => transport_metadata_collection%get_transport_metadata('con_tracer')
 
           ! Set up a coarse transport_runtime if needed for aerosol transport
           if (use_multires_coupling .and. coarse_aerosol_transport) then
@@ -437,7 +453,7 @@ contains
             ! Restrict dry fields
             aerosol_transport_runtime => get_transport_runtime(aerosol_primary_mesh)
             call aerosol_transport_runtime%restrict_dry_fields(dynamics_transport_runtime)
-            call aerosol_transport_runtime%shift_dry_fields()
+            call aerosol_transport_runtime%shift_dry_fields(use_total_quantities=.false.)
             call aerosol_transport_runtime%compute_consistent_quantities(aerosol_shifted_mesh)
             if (transport_ageofair) then
               call aerosol_transport_runtime%compute_consistent_quantities(aerosol_primary_mesh)
@@ -446,27 +462,41 @@ contains
             nullify(aerosol_primary_mesh, aerosol_shifted_mesh, aerosol_w2_fs, &
                     dynamics_transport_runtime, aerosol_transport_runtime)
 
-          else if ( cheap_update .AND. outer > 1 ) then
-            ! Transport on dynamics mesh and using cheap update
-            ! Recompute transport_runtime with full wind instead of cheap update
-            ! wind, and set cheap_update flag = .false.
-            if ( check_any_shifted() ) then
-              primary_mesh => wind_n%get_mesh()
-              shifted_mesh => mesh_collection%get_mesh(primary_mesh, SHIFTED)
+          else if ( redo_last_outer_runtime ) then
+            ! The cheap_update transport is being used, however as the cheap
+            ! update affects wind used in final semi-implicit outer transport step,
+            ! we need combined fluxes for consistent transport, or recomputed
+            ! transport_runtime with cheap_update flag = .false.
 
-              call set_transport_runtime( wind_n, wind_np1,   &
-                                          model_clock, outer, &
-                                          .false.,            &
-                                          shifted_mesh=shifted_mesh )
+            if (transport_metadata%get_equation_form() == equation_form_consistent) then
+              dynamics_transport_runtime => get_transport_runtime(primary_mesh)
+              call dynamics_transport_runtime%compute_total_rho_quantities()
+              call dynamics_transport_runtime%shift_dry_fields(use_total_quantities = .true.)
+              call dynamics_transport_runtime%compute_consistent_quantities(shifted_mesh)
             else
-              call set_transport_runtime( wind_n, wind_np1,   &
-                                          model_clock, outer, &
-                                          .false. )
+              if ( check_any_shifted() ) then
+                primary_mesh => wind_n%get_mesh()
+                shifted_mesh => mesh_collection%get_mesh(primary_mesh, SHIFTED)
+
+                call set_transport_runtime( wind_n, wind_np1,       &
+                                            model_clock, outer,     &
+                                            cheap_update = .false., &
+                                            shifted_mesh = shifted_mesh )
+              else
+                call set_transport_runtime( wind_n, wind_np1,   &
+                                            model_clock, outer, &
+                                            cheap_update = .false. )
+              end if
+              dynamics_transport_runtime => get_transport_runtime(primary_mesh)
+              ! As we have recomputed transport_runtime for last outer
+              ! conservative tracers we do not need to compute it again
+              ! for last outer advective tracers, so set flag to false
+              redo_last_outer_runtime = .false.
             end if
 
-            write(log_scratch_space,'(A)') 'Conservative tracer transport is not '// &
-                          'yet fully implemented with the cheap_update scheme'
-            call log_event(log_scratch_space, LOG_LEVEL_ERROR)
+            ! Set the cheap update flag to false so that the last outer
+            ! transport uses the full transport scheme
+            call dynamics_transport_runtime%set_apply_cheap_update(.false.)
 
           end if
 
@@ -476,7 +506,7 @@ contains
           end if
 
           ! Transport of tracers -----------------------------------------------
-          transport_metadata => transport_metadata_collection%get_transport_metadata('con_tracer')
+          call log_event( "Transporting conservative tracers (last)...", LOG_LEVEL_INFO)
 
           if (use_multires_coupling .and. coarse_aerosol_transport) then
             call coarse_collection_transport_alg &
@@ -500,6 +530,32 @@ contains
 
         if (present(adv_tracer_last_outer) .and. check_transport_name('adv_tracer') ) then
           ! TODO: This implementation doesn't do coarse resolution transport for this group
+
+          if ( redo_last_outer_runtime ) then
+            ! Recompute transport_runtime with full wind instead of cheap update
+            ! wind, and set cheap_update flag = .false.
+            if ( check_any_shifted() ) then
+              primary_mesh => wind_n%get_mesh()
+              shifted_mesh => mesh_collection%get_mesh(primary_mesh, SHIFTED)
+
+              call set_transport_runtime( wind_n, wind_np1,       &
+                                          model_clock, outer,     &
+                                          cheap_update = .false., &
+                                          shifted_mesh=shifted_mesh )
+            else
+              call set_transport_runtime( wind_n, wind_np1,   &
+                                          model_clock, outer, &
+                                          cheap_update = .false. )
+            end if
+            dynamics_transport_runtime => get_transport_runtime(primary_mesh)
+
+            ! Set the cheap update flag to false so that the last outer
+            ! transport uses the full transport scheme
+            call dynamics_transport_runtime%set_apply_cheap_update(.false.)
+
+          end if
+
+          call log_event( "Transporting advective tracers (last)...", LOG_LEVEL_INFO)
           transport_metadata => transport_metadata_collection%get_transport_metadata('adv_tracer')
           call tracer_collection_transport_alg   &
              (                                   &

@@ -48,6 +48,7 @@ module ffsl_hori_alg_mod
   use sci_average_w2_to_w2b_kernel_mod, only: average_w2_to_w2b_kernel_type
   use ffsl_flux_xy_kernel_mod,          only: ffsl_flux_xy_kernel_type
   use ffsl_flux_xy_spt_kernel_mod,      only: ffsl_flux_xy_spt_kernel_type
+  use ffsl_flux_xy_first_kernel_mod,    only: ffsl_flux_xy_first_kernel_type
   use ffsl_unify_flux_kernel_mod,       only: ffsl_unify_flux_kernel_type
   use fv_difference_x_kernel_mod,       only: fv_difference_x_kernel_type
   use fv_difference_y_kernel_mod,       only: fv_difference_y_kernel_type
@@ -278,10 +279,12 @@ contains
     logical(kind=l_def) :: strang
     logical(kind=l_def) :: monotone_remap
     integer(kind=i_def) :: special_edges_monotone
+    logical(kind=l_def) :: first_order_cheap_update
 
     ! Constants
     integer(kind=i_def) :: mesh_id
     integer(kind=i_def) :: stencil_extent_xy
+    integer(kind=i_def) :: stencil_ex_first
     integer(kind=i_def) :: cfl_stencil_xy
     integer(kind=i_def) :: extra_points
     integer(kind=i_def) :: remap_depth
@@ -297,6 +300,7 @@ contains
     special_edges_monotone = transport_metadata%get_special_edges_monotone()
     call monotone_option_special_edges(special_edges_monotone, monotone)
     strang = (transport_metadata%get_splitting() == splitting_strang_hvh)
+    first_order_cheap_update = transport_runtime%get_apply_cheap_update()
 
     ! Get pre-computed fields
     adv_one_x => transport_runtime%get_adv_unity_x(mesh_id, strang)
@@ -325,6 +329,8 @@ contains
     stencil_extent_xy = dep_stencil_extent_xy + extra_points + ffsl_inner_order
     ! PSyclone needs these to be different variables to the stencil_extents
     cfl_stencil_xy = stencil_extent_xy
+    ! Stencil extent for first order cheap update is 1
+    stencil_ex_first = 1
 
     ! The minimum value is required for the quasi-monotone limiter for PPM,
     ! if it is not set we assume positivity.
@@ -356,7 +362,16 @@ contains
 
     if ( subroutine_timers ) call timer('transport.ffsl_hori_sweeps')
     ! Compute the mass fluxes: -------------------------------------------------
-    if (special_edges_treatment) then
+    if (first_order_cheap_update) then
+      call invoke( setval_c(flux, 0.0_r_tran),                                  &
+                   ffsl_flux_xy_first_kernel_type(                              &
+                                            flux,                               &
+                                            field_big_halo, stencil_ex_first,   &
+                                            field_ptr_copy, stencil_ex_first,   &
+                                            frac_wind_xy,                       &
+                                            face_selector_ew,                   &
+                                            face_selector_ns, dt ) )
+    else if (special_edges_treatment) then
       call invoke( setval_c(flux, 0.0_r_tran),                                  &
                    ffsl_flux_xy_spt_kernel_type(                                &
                                             flux,                               &
@@ -507,10 +522,12 @@ contains
     integer(kind=i_def) :: special_edges_monotone
     integer(kind=i_def) :: equation_form
     logical(kind=l_def) :: swift_splitting
+    logical(kind=l_def) :: first_order_cheap_update
 
     ! Constants
     integer(kind=i_def) :: mesh_id, step
     integer(kind=i_def) :: stencil_extent_xy
+    integer(kind=i_def) :: stencil_ex_first
     integer(kind=i_def) :: cfl_stencil_xy
     integer(kind=i_def) :: remap_depth
     real(kind=r_tran)   :: min_val
@@ -535,6 +552,7 @@ contains
     equation_form = transport_metadata%get_equation_form()
     swift_splitting = (transport_metadata%get_ffsl_splitting() &
                        == ffsl_splitting_swift)
+    first_order_cheap_update = transport_runtime%get_apply_cheap_update()
 
     ! Get pre-computed fields
     detj_at_w3 => get_detj_at_w3_r_tran(mesh_id)
@@ -561,13 +579,6 @@ contains
       dep_dist_xy => transport_runtime%get_tracer_dep_dist_xy(mesh_id, step_with_substep, outer)
       dep_stencil_extent_xy => transport_runtime%get_tracer_stencil_extent_xy(mesh_id, step_with_substep, outer)
       frac_flux_xy => transport_runtime%get_dry_frac_flux_xy(mesh_id, step_with_substep, outer)
-    else if (ffsl_unity_3d) then
-      step = transport_runtime%get_tracer_step_ctr()
-      frac_flux_xy => transport_runtime%get_unity_frac_wind_xy(mesh_id, step, outer)
-      adv_detj_x => transport_runtime%get_detj_unity_x(mesh_id, step)
-      adv_detj_y => transport_runtime%get_detj_unity_y(mesh_id, step)
-      dep_dist_xy => transport_runtime%get_unity_dep_dist_xy(mesh_id, step, outer)
-      dep_stencil_extent_xy => transport_runtime%get_unity_stencil_extent_xy(mesh_id, step, outer)
     else if (ffsl_unity_3d) then
       step = transport_runtime%get_tracer_step_ctr()
       frac_flux_xy => transport_runtime%get_unity_frac_wind_xy(mesh_id, step, outer)
@@ -605,6 +616,8 @@ contains
     stencil_extent_xy = dep_stencil_extent_xy + extra_points + order
     ! PSyclone needs these to be different variables to the stencil_extents
     cfl_stencil_xy = stencil_extent_xy
+    ! Stencil extent for first order cheap update is 1
+    stencil_ex_first = 1
 
     ! The minimum value is required for the quasi-monotone limiter for PPM,
     ! if it is not set we assume positivity.
@@ -652,7 +665,16 @@ contains
     ! For consistent equation form, use dry mass instead of detj
     ! For consistent equation form, splittings do not need distinguishing as
     ! the correct support fields (e.g. dry mass) should already be pointed to
-    if (equation_form == equation_form_consistent .and. special_edges_treatment) then
+    if (first_order_cheap_update) then
+      call invoke( setval_c(flux, 0.0_r_tran),                                  &
+                   ffsl_flux_xy_first_kernel_type(                              &
+                                             flux,                              &
+                                             remap_field_y, stencil_ex_first,   &
+                                             remap_field_x, stencil_ex_first,   &
+                                             frac_flux_xy,                      &
+                                             face_selector_ew,                  &
+                                             face_selector_ns, dt ) )
+    else if (equation_form == equation_form_consistent .and. special_edges_treatment) then
       ! Consistent and special edge treatment ----------------------------------
       call invoke( setval_c(flux, 0.0_r_tran),                                 &
                    ffsl_flux_xy_spt_kernel_type(                               &
@@ -939,11 +961,13 @@ contains
     logical(kind=l_def) :: strang
     integer(kind=i_def) :: step_with_substep
     integer(kind=i_def) :: step_p1_with_substep
+    logical(kind=l_def) :: first_order_cheap_update
 
     ! Constants
     integer(kind=i_def) :: mesh_id, step
     integer(kind=i_def) :: extra_points
     integer(kind=i_def) :: stencil_extent_xy
+    integer(kind=i_def) :: stencil_ex_first
     integer(kind=i_def) :: cfl_stencil_xy
     integer(kind=i_def) :: remap_depth
     real(kind=r_tran)   :: min_val
@@ -959,6 +983,7 @@ contains
     call monotone_option_special_edges(special_edges_monotone, monotone)
     equation_form = transport_metadata%get_equation_form()
     strang = (transport_metadata%get_splitting() == splitting_strang_hvh)
+    first_order_cheap_update = transport_runtime%get_apply_cheap_update()
 
     step = transport_runtime%get_tracer_step_ctr()
     panel_id_x => get_panel_id(mesh_id)
@@ -980,15 +1005,6 @@ contains
                                  mesh_id, step_with_substep, outer_step=.false.)
       frac_flux_xy => transport_runtime%get_dry_frac_flux_xy(                  &
                                  mesh_id, step_with_substep, outer_step=.false.)
-    else if (ffsl_unity_3d) then
-      ! Advective/conservative forms of equation use volume ("detj")
-      detj_at_w3 => transport_runtime%get_detj_unity(mesh_id, step)
-      detj_at_w3_copy => transport_runtime%get_detj_unity(mesh_id, step)
-      adv_detj_x => transport_runtime%get_detj_unity_x(mesh_id, step)
-      adv_detj_y => transport_runtime%get_detj_unity_y(mesh_id, step)
-      dep_dist_xy => transport_runtime%get_unity_dep_dist_xy(mesh_id, step, outer_step=.false.)
-      dep_stencil_extent_xy => transport_runtime%get_unity_stencil_extent_xy(mesh_id, step, outer_step=.false.)
-      frac_flux_xy => transport_runtime%get_unity_frac_wind_xy(mesh_id, step, outer_step=.false.)
     else if (ffsl_unity_3d) then
       ! Advective/conservative forms of equation use volume ("detj")
       detj_at_w3 => transport_runtime%get_detj_unity(mesh_id, step)
@@ -1022,6 +1038,8 @@ contains
     stencil_extent_xy = dep_stencil_extent_xy + extra_points + order
     ! PSyclone needs these to be different variables to the stencil_extents
     cfl_stencil_xy = stencil_extent_xy
+    ! Stencil extent for first order cheap update is 1
+    stencil_ex_first = 1
 
     ! The minimum value is required for the quasi-monotone limiter for PPM,
     ! if it is not set we assume positivity.
@@ -1054,7 +1072,16 @@ contains
     ! Kernel and arguments depend on:
     ! (a) equation form, (b) special edge treatment
     ! For consistent equation form, use dry mass instead of detj
-    if (equation_form == equation_form_consistent .and. special_edges_treatment) then
+    if (first_order_cheap_update) then
+      call invoke( setval_c(flux, 0.0_r_tran),                                  &
+                   ffsl_flux_xy_first_kernel_type(                              &
+                                             flux,                              &
+                                             field_big_halo, stencil_ex_first,  &
+                                             field_ptr_copy, stencil_ex_first,  &
+                                             frac_flux_xy,                      &
+                                             face_selector_ew,                  &
+                                             face_selector_ns, step_dt ) )
+    else if (equation_form == equation_form_consistent .and. special_edges_treatment) then
       ! Consistent and special edges -------------------------------------------
       call invoke( setval_c(flux, 0.0_r_tran),                                  &
                    ffsl_flux_xy_spt_kernel_type(                                &

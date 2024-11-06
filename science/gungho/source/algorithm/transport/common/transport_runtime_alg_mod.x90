@@ -162,8 +162,13 @@ module transport_runtime_alg_mod
     type(r_tran_field_type),    allocatable, dimension(:,:)   :: dry_mass
     type(r_tran_field_type),    allocatable, dimension(:,:)   :: dry_mass_ffsl_x
     type(r_tran_field_type),    allocatable, dimension(:,:)   :: dry_mass_ffsl_y
+    type(r_tran_field_type),    allocatable, dimension(:,:)   :: total_rho_d
+    type(r_tran_field_type),    allocatable, dimension(:,:)   :: total_dry_mass
+    type(r_tran_field_type),    allocatable, dimension(:,:)   :: total_dry_mass_ffsl_x
+    type(r_tran_field_type),    allocatable, dimension(:,:)   :: total_dry_mass_ffsl_y
     type(r_tran_field_type),    allocatable, dimension(:,:)   :: flux
     type(r_tran_field_type),    allocatable, dimension(:,:)   :: dry_flux
+    type(r_tran_field_type),    allocatable, dimension(:,:)   :: total_dry_flux
     type(r_tran_field_type),    allocatable, dimension(:,:,:) :: vert_cubic_coef
     type(integer_field_type),   allocatable, dimension(:,:,:) :: vert_cubic_index
     type(r_tran_field_type),    allocatable, dimension(:,:,:) :: vert_quintic_coef
@@ -180,6 +185,8 @@ module transport_runtime_alg_mod
     real(kind=r_tran)                                         :: rho_minvalue
     type(r_tran_field_type)                                   :: remap_weights
     type(integer_field_type)                                  :: remap_indices
+    logical(kind=l_def)                                       :: apply_cheap_update
+    logical(kind=l_def)                                       :: cheap_update_flag
     logical(kind=l_def)                                       :: computed_remapping
     logical(kind=l_def)                                       :: computed_dep_pt_idxs
     integer(kind=i_def)                                       :: number_total_substeps
@@ -199,6 +206,7 @@ module transport_runtime_alg_mod
     procedure, public  :: restrict_dry_fields
     procedure, public  :: shift_dry_fields
     procedure, public  :: compute_consistent_quantities
+    procedure, public  :: compute_total_rho_quantities
     procedure, public  :: get_number_total_substeps
     procedure, public  :: get_number_mol_substeps
     procedure, public  :: get_dt_substep
@@ -246,6 +254,8 @@ module transport_runtime_alg_mod
     procedure, public  :: set_flux
     procedure, public  :: get_dry_flux
     procedure, public  :: set_dry_flux
+    procedure, public  :: set_apply_cheap_update
+    procedure, public  :: get_apply_cheap_update
     procedure, public  :: get_num_dry_steps
     procedure, public  :: get_tracer_step_ctr
     procedure, public  :: inc_tracer_step_ctr
@@ -445,6 +455,16 @@ contains
     any_consistent_swift = check_any_consistent_swift()
     compute_cfl_dep = ((any_scheme_mol .or. log_level() <= LOG_LEVEL_INFO) &
                        .and. max_vert_cfl_calc == max_vert_cfl_calc_dep_point)
+
+    ! Check whether it is a cheap update step
+    self%cheap_update_flag  = .false.
+    self%apply_cheap_update = .false.
+    if (cheap_update) then
+      self%cheap_update_flag = .true.
+      if (outer > 1) then
+        self%apply_cheap_update = .true.
+      end if
+    end if
 
     ! Set logicals for semi-implicit first outer iteration transport
     if (outer < outer_iterations .AND. si_outer_transport==si_outer_transport_advective) then
@@ -653,7 +673,7 @@ contains
         wind_np1 => shifted_wind_np1
       end if
 
-      if ( cheap_update .AND. outer > 1 ) then
+      if ( self%apply_cheap_update ) then
         ! Set advecting wind = (wind^{n+1}-wind^{n})/2
         ! For outer>2 this becomes (wind^{n+1}-wind^prev)/2
         call invoke( aX_minus_bY(self%advecting_wind(mesh_idx), 0.5_r_tran, wind_np1, &
@@ -719,7 +739,7 @@ contains
       if (any_vert_dep_dist .OR. any_horz_dep_dist) then
         call dep_pt_wind_n%initialise( wind_n%get_function_space() )
         call dep_pt_wind_np1%initialise( wind_np1%get_function_space() )
-        if ( cheap_update .AND. outer > 1 ) then
+        if ( self%apply_cheap_update ) then
           ! Set up winds for cheap update with FFSL/SL
           call invoke( aX_minus_bY(dep_pt_wind_n, 0.5_r_tran, wind_np1,        &
                                                   0.5_r_tran, wind_n),         &
@@ -1142,11 +1162,16 @@ contains
                 self%dry_mass(n_meshes, np1_steps_with_substep),                &
                 self%dry_mass_ffsl_x(n_meshes, n_steps_with_substep),           &
                 self%dry_mass_ffsl_y(n_meshes, n_steps_with_substep),           &
+                self%total_rho_d(n_meshes, n_steps+1),                          &
+                self%total_dry_mass(n_meshes, n_steps+1),                       &
+                self%total_dry_mass_ffsl_x(n_meshes, n_steps),                  &
+                self%total_dry_mass_ffsl_y(n_meshes, n_steps),                  &
                 self%detj_unity(n_meshes, n_steps+1),                           &
                 self%detj_unity_x(n_meshes, n_steps),                           &
                 self%detj_unity_y(n_meshes, n_steps),                           &
                 self%flux(n_meshes, n_steps-1),                                 &
                 self%dry_flux(n_meshes, n_steps_with_substep),                  &
+                self%total_dry_flux(n_meshes, n_steps),                         &
                 self%tracer_dep_dist_ixy(n_meshes, n_steps_with_substep),       &
                 self%tracer_dep_dist_oxy(n_meshes, n_steps_with_substep),       &
                 self%tracer_dep_dist_z(n_meshes, n_steps_with_substep),         &
@@ -1163,7 +1188,7 @@ contains
                 self%tracer_stencil_extent_oxy(n_meshes, n_steps_with_substep), &
                 self%unity_stencil_extent_ixy(n_meshes, n_steps),               &
                 self%unity_stencil_extent_oxy(n_meshes, n_steps)                &
-      )
+              )
       if ( subroutine_timers ) call timer('transport.runtime_allocate')
     end if
 
@@ -1450,8 +1475,13 @@ contains
     if ( allocated( self%dry_mass ) )                  deallocate( self%dry_mass )
     if ( allocated( self%dry_mass_ffsl_x ) )           deallocate( self%dry_mass_ffsl_x )
     if ( allocated( self%dry_mass_ffsl_y ) )           deallocate( self%dry_mass_ffsl_y )
+    if ( allocated( self%total_rho_d ) )               deallocate( self%total_rho_d )
+    if ( allocated( self%total_dry_mass ) )            deallocate( self%total_dry_mass )
+    if ( allocated( self%total_dry_mass_ffsl_x ) )     deallocate( self%total_dry_mass_ffsl_x )
+    if ( allocated( self%total_dry_mass_ffsl_y ) )     deallocate( self%total_dry_mass_ffsl_y )
     if ( allocated( self%flux ) )                      deallocate( self%flux )
     if ( allocated( self%dry_flux ) )                  deallocate( self%dry_flux )
+    if ( allocated( self%total_dry_flux ) )            deallocate( self%total_dry_flux )
     if ( allocated( self%horizontal_cfl_max ) )        deallocate( self%horizontal_cfl_max )
     if ( allocated( self%vertical_cfl_max ) )          deallocate( self%vertical_cfl_max )
     if ( allocated( self%total_cfl_max ) )             deallocate( self%total_cfl_max )
@@ -1485,7 +1515,6 @@ contains
 
   !> @brief Sets the dry flux for use in consistent tracer transport
   !> @pre Fields passed to this routine must be on the prime extrusion mesh
-  !> @param[in,out] self      The transport_runtime object
   !> @param[in]     dry_flux  Flux field used to transport dry density
   !> @param[in]     step      The step to store the flux for.
   !!                          Note that if there is substepping then this
@@ -1511,6 +1540,22 @@ contains
     call dry_flux%copy_field_properties(self%dry_flux(1,step))
     call invoke( setval_X(self%dry_flux(1,step), dry_flux) )
 
+    ! If we are using the cheap update for transport then we need to
+    ! save the total dry flux (from all outer semi-implicit iterations)
+    ! for consistent transport
+    if (self%cheap_update_flag) then
+      if (self%apply_cheap_update) then
+        ! Subsequent outer transport step using cheap update
+        ! so increment total_dry_flux
+        call invoke( inc_X_plus_Y(self%total_dry_flux(1,step), self%dry_flux(1,step)) )
+      else
+        ! First outer transport step using cheap update
+        ! so initialise total_dry_flux
+        call self%dry_flux(1,step)%copy_field_properties(self%total_dry_flux(1,step))
+        call invoke( setval_X(self%total_dry_flux(1,step), self%dry_flux(1,step)) )
+      end if
+    end if
+
     nullify( prime_extrusion_mesh )
 
   end subroutine set_dry_flux
@@ -1518,7 +1563,6 @@ contains
   !> @brief Sets a dry density field to use in tracer transport, and computes
   !!        the corresponding mass field
   !> @pre Fields passed to this routine must be on the prime extrusion mesh
-  !> @param[in,out] self        The transport_runtime object
   !> @param[in]     rho_d       Dry density field
   !> @param[in]     step        The step to store the dry density for.
   !!                            Note that if there is substepping then this
@@ -1590,7 +1634,6 @@ contains
   !!        computes the corresponding mass field. This should be the dry
   !!        density field from a horizontal x step
   !> @pre Fields passed to this routine must be on the prime extrusion mesh
-  !> @param[in,out] self        The transport_runtime object
   !> @param[in]     rho_d       Dry density field
   !> @param[in]     step        The step to store the dry density for.
   !!                            Note that if there is substepping then this
@@ -1648,7 +1691,6 @@ contains
   !!        computes the corresponding mass field. This should be the dry
   !!        density field from a horizontal y step
   !> @pre Fields passed to this routine must be on the prime extrusion mesh
-  !> @param[in,out] self        The transport_runtime object
   !> @param[in]     rho_d       Dry density field
   !> @param[in]     step        The step to store the dry density for.
   !!                            Note that if there is substepping then this
@@ -1702,7 +1744,6 @@ contains
   end subroutine set_rho_d_ffsl_y
 
   !> @brief Stores a field at the start of the whole transport step
-  !> @param[in,out] self      The transport_runtime object
   !> @param[in]     field_n   Field at start of whole transport step
   subroutine set_field_n(self, field_n)
 
@@ -1733,6 +1774,25 @@ contains
     call invoke( setval_X(self%flux(idx,self%tracer_step_ctr), flux) )
 
   end subroutine set_flux
+
+  !> @brief   Sets the apply_cheap_update logical.
+  !> @details Sets the cheap update step to be true or false based on the cheap_option
+  !!          argument. If cheap_update is true and outer_iterations > 1 this is
+  !!          automatically set to true, however, for tracers transported in the
+  !!          last outer step this needs to be set to false. The apply_cheap_update
+  !!          is used to tell the transport scheme whether to use the full transport
+  !!          scheme, or to revert to the cheap update transport scheme.
+  !> @param[in] cheap_option    Logical to set apply_cheap_update
+  subroutine set_apply_cheap_update(self, cheap_option)
+
+    implicit none
+
+    class(transport_runtime_type), target, intent(inout) :: self
+    logical(kind=l_def),                   intent(in)    :: cheap_option
+
+    self%apply_cheap_update = cheap_option
+
+  end subroutine set_apply_cheap_update
 
   !> @brief Sets the transport substep counter
   !> @param[in,out] self      The transport_runtime object
@@ -2031,19 +2091,23 @@ contains
 
   !> @brief Computes stored dry fields on the shifted mesh for consistent
   !!        transport of Wtheta tracers
-  !> @param[in,out] self   The transport_runtime object
-  subroutine shift_dry_fields(self)
+  !> @param[in] use_total_quantities
+  !!                           Logical to determine if the total_quantities
+  !!                           need to be shifted (this is for the last
+  !!                           outer tracers when the cheap update is being used)
+  subroutine shift_dry_fields(self, use_total_quantities)
 
-    use sci_consist_w2_to_sh_w2_kernel_mod, only: consist_w2_to_sh_w2_kernel_type
+    use sci_consist_w2_to_sh_w2_kernel_mod,   only: consist_w2_to_sh_w2_kernel_type
     use sci_consist_w2h_to_sh_w2h_kernel_mod, only: consist_w2h_to_sh_w2h_kernel_type
     use sci_consist_w2v_to_sh_w2v_kernel_mod, only: consist_w2v_to_sh_w2v_kernel_type
-    use psykal_lite_transport_mod,        only: invoke_deep_shift_mass, &
-                                                invoke_deep_X_divideby_Y
-    use sci_shift_mass_w3_kernel_mod,     only: shift_mass_w3_kernel_type
+    use psykal_lite_transport_mod,            only: invoke_deep_shift_mass, &
+                                                    invoke_deep_X_divideby_Y
+    use sci_shift_mass_w3_kernel_mod,         only: shift_mass_w3_kernel_type
 
     implicit none
 
     class(transport_runtime_type), target, intent(inout) :: self
+    logical(kind=l_def),                   intent(in)    :: use_total_quantities
 
     integer(kind=i_def)                :: prime_mesh_id, fs_idx, step
     type(mesh_type),           pointer :: prime_extrusion_mesh => null()
@@ -2096,6 +2160,15 @@ contains
                                      halo_depth=shifted_mesh%get_halo_depth() )
           end if
 
+          ! If using cheap update and it is the last outer semi-implicit step
+          ! we must use the combined dry mass
+          if (use_total_quantities) then
+            call invoke( setval_X(self%dry_mass(1,step),                       &
+                                  self%total_dry_mass(1,step)),                &
+                         setval_X(self%rho_d(1,step),                          &
+                                  self%total_rho_d(1,step)) )
+          end if
+
           if (extended_mesh) then
             ! Original field has already been remapped, so can perform a "deep"
             ! shift on the original field to get the shifted, remapped density
@@ -2135,6 +2208,15 @@ contains
               call rho_d_shifted%initialise( w3_fs, &
                                            halo_depth=shifted_mesh%get_halo_depth() )
 
+              ! If using cheap update and it is the last outer semi-implicit step
+              ! we must use the combined mass
+              if (use_total_quantities) then
+                call invoke( setval_X(self%dry_mass_ffsl_x(1,step),            &
+                                      self%total_dry_mass_ffsl_x(1,step)),     &
+                             setval_X(self%dry_mass_ffsl_y(1,step),            &
+                                      self%total_dry_mass_ffsl_y(1,step)) )
+              end if
+
               if (extended_mesh) then
                 ! Mass should already correspond to remapped density
                 ! Rather than remapping, perform deep shifting of mass into halos
@@ -2169,6 +2251,13 @@ contains
             if (.not. self%dry_flux(2,step_with_substep)%is_initialised()) then
               w2_fs => function_space_collection%get_fs(shifted_mesh, 0, fs_idx)
               call self%dry_flux(2,step_with_substep)%initialise( vector_space = w2_fs )
+            end if
+
+            ! If using cheap update and it is the last outer semi-implicit step
+            ! we must use the total flux
+            if (use_total_quantities) then
+              call invoke( setval_X(self%dry_flux(1,step),                     &
+                                    self%total_dry_flux(1,step)) )
             end if
 
             select case (fs_idx)
@@ -2420,6 +2509,168 @@ contains
     if ( subroutine_timers ) call timer('transport.runtime_consistent')
 
   end subroutine compute_consistent_quantities
+
+  !> @brief Computes density quantities necessary for the consistent
+  !!        transport of tracers using FFSL during the last outer
+  !!        semi-implicit step when the cheap update transport is used
+  subroutine compute_total_rho_quantities(self)
+
+    use base_mesh_config_mod,           only: topology, topology_non_periodic
+    use boundaries_config_mod,          only: limited_area, transport_boundary_depth
+    use fem_constants_mod,              only: get_detj_at_w3_r_tran
+    use fs_continuity_mod,              only: W2, W2H, W2V
+    use fv_divergence_2d_kernel_mod,    only: fv_divergence_2d_kernel_type
+    use fv_divergence_3d_kernel_mod,    only: fv_divergence_3d_kernel_type
+    use fv_divergence_x_kernel_mod,     only: fv_divergence_x_kernel_type
+    use fv_divergence_y_kernel_mod,     only: fv_divergence_y_kernel_type
+    use fv_divergence_z_kernel_mod,     only: fv_divergence_z_kernel_type
+    use limited_area_lbc_alg_mod,       only: overwrite_blending_zone_rtran
+    use transport_enumerated_types_mod, only: direction_3d, &
+                                              direction_h,  &
+                                              direction_v
+
+    implicit none
+
+    class(transport_runtime_type), target, intent(inout) :: self
+
+    ! Integers
+    integer(kind=i_def) :: number_of_steps
+    integer(kind=i_def) :: step
+    integer(kind=i_def) :: fs_idx
+    integer(kind=i_def) :: direction
+    integer(kind=i_def) :: mesh_id
+    integer(kind=i_def) :: stencil_depth
+
+    ! Pointers
+    type(r_tran_field_type),   pointer :: detj_at_w3
+    type(function_space_type), pointer :: field_fs
+
+    ! Fields
+    type(r_tran_field_type) :: increment
+    type(r_tran_field_type) :: increment_x
+    type(r_tran_field_type) :: increment_y
+
+    ! We must use the incremented "total" fluxes for consistent tracer
+    ! in the last outer step if the cheap update is used
+
+    ! Get number of steps in split transport
+    number_of_steps = self%num_dry_steps
+
+    ! Get Det(J) and field function space
+    mesh_id = self%rho_d(1,1)%get_mesh_id()
+    field_fs => self%rho_d(1,1)%get_function_space()
+    detj_at_w3 => get_detj_at_w3_r_tran(mesh_id)
+
+    ! Initialise increments
+    call increment%initialise( vector_space = field_fs )
+    call increment_x%initialise( vector_space = field_fs )
+    call increment_y%initialise( vector_space = field_fs )
+
+    ! Get the stencil depth
+    stencil_depth = get_required_stencil_depth()
+
+    ! Initialise "total" variables
+    do step = 1, number_of_steps
+      call self%total_rho_d(1,step)%initialise(              &
+                                    vector_space = field_fs, &
+                                    halo_depth = stencil_depth )
+      call self%total_dry_mass(1,step)%initialise(           &
+                                    vector_space = field_fs, &
+                                    halo_depth = stencil_depth )
+      call self%total_dry_mass_ffsl_x(1,step)%initialise(    &
+                                    vector_space = field_fs, &
+                                    halo_depth = stencil_depth )
+      call self%total_dry_mass_ffsl_y(1,step)%initialise(    &
+                                    vector_space = field_fs, &
+                                    halo_depth = stencil_depth )
+    end do
+
+    call self%total_rho_d(1,number_of_steps+1)%initialise(    &
+                                    vector_space = field_fs,  &
+                                    halo_depth = stencil_depth )
+    call self%total_dry_mass(1,number_of_steps+1)%initialise( &
+                                    vector_space = field_fs,  &
+                                    halo_depth = stencil_depth )
+
+    ! Set first rho and dry mass to be rho_n
+    call invoke( setval_X(self%total_rho_d(1,1), self%rho_d(1,1)), &
+                 setval_X(self%total_dry_mass(1,1), self%dry_mass(1,1)) )
+
+    ! Compute divergence of fluxes for each split step
+    do step = 1, number_of_steps
+
+      ! Determine direction of transport
+      fs_idx = self%total_dry_flux(1,step)%which_function_space()
+      select case (fs_idx)
+      case (W2H)
+        direction = direction_h
+      case (W2V)
+        direction = direction_v
+      case (W2)
+        direction = direction_3d
+      end select
+
+      ! Can use quicker lowest-order kernels to take the divergence
+      select case (direction)
+
+      case (direction_3d)
+        call invoke( fv_divergence_3d_kernel_type(increment,                   &
+                                                  self%total_dry_flux(1,step), &
+                                                  detj_at_w3),                 &
+                     X_minus_Y(self%total_rho_d(1,step+1),                     &
+                               self%total_rho_d(1,step), increment),           &
+                     X_times_Y(self%total_dry_mass(1,step+1),                  &
+                               self%total_rho_d(1,step+1), detj_at_w3) )
+
+      case (direction_h)
+        call invoke( fv_divergence_2d_kernel_type(increment,                   &
+                                                  self%total_dry_flux(1,step), &
+                                                  detj_at_w3),                 &
+                     X_minus_Y(self%total_rho_d(1,step+1),                     &
+                               self%total_rho_d(1,step), increment),           &
+                     X_times_Y(self%total_dry_mass(1,step+1),                  &
+                               self%total_rho_d(1,step+1), detj_at_w3),        &
+        ! Compute total_rho_d_ffsl in x and y
+                     fv_divergence_x_kernel_type(increment_x,                  &
+                                                 self%total_dry_flux(1,step),  &
+                                                 detj_at_w3),                  &
+                     fv_divergence_y_kernel_type(increment_y,                  &
+                                                 self%total_dry_flux(1,step),  &
+                                                 detj_at_w3),                  &
+                     X_minus_Y(self%total_dry_mass_ffsl_x(1,step),             &
+                               self%total_rho_d(1,step),                       &
+                               increment_x),                                   &
+                     X_minus_Y(self%total_dry_mass_ffsl_y(1,step),             &
+                               self%total_rho_d(1,step),                       &
+                               increment_y),                                   &
+                     inc_X_times_Y(self%total_dry_mass_ffsl_x(1,step),         &
+                                   detj_at_w3),                                &
+                     inc_X_times_Y(self%total_dry_mass_ffsl_y(1,step),         &
+                                   detj_at_w3) )
+        if ( limited_area .and. topology == topology_non_periodic ) then
+          call overwrite_blending_zone_rtran(self%total_dry_mass_ffsl_x(1,step), &
+                                             self%total_rho_d(1,step),           &
+                                             depth=transport_boundary_depth)
+          call overwrite_blending_zone_rtran(self%total_dry_mass_ffsl_x(1,step), &
+                                             self%total_rho_d(1,step),           &
+                                             depth=transport_boundary_depth)
+        end if
+
+      case (direction_v)
+        call invoke( fv_divergence_z_kernel_type(increment,                    &
+                                                 self%total_dry_flux(1,step),  &
+                                                 detj_at_w3),                  &
+                     X_minus_Y(self%total_rho_d(1,step+1),                     &
+                               self%total_rho_d(1,step), increment),           &
+                     X_times_Y(self%total_dry_mass(1,step+1),                  &
+                               self%total_rho_d(1,step+1), detj_at_w3) )
+      end select
+
+    end do
+
+    nullify(detj_at_w3, field_fs)
+
+  end subroutine compute_total_rho_quantities
 
 ! ============================================================================ !
 ! GETTERS
@@ -3204,6 +3455,24 @@ contains
     end if
 
   end function get_tracer_stencil_extent_xy
+
+  !> @brief Returns whether the transport step is a cheap update step
+  !!        or a regular transport step.
+  !> @details The apply_cheap_update logical is used to tell
+  !!          the transport scheme whether to use the full transport
+  !!          scheme, or to revert to the cheap update transport scheme.
+  !> @return Logical set to true if the cheap update flag is true and
+  !!         it is not the first semi-implicit outer iteration
+  function get_apply_cheap_update(self) result(apply_cheap_update)
+
+    implicit none
+
+    class(transport_runtime_type), target, intent(in) :: self
+    logical(kind=l_def)                               :: apply_cheap_update
+
+    apply_cheap_update = self%apply_cheap_update
+
+  end function get_apply_cheap_update
 
   !> @brief Returns number of split transport steps for the dry density
   !> @return The number of split transport steps for the dry density

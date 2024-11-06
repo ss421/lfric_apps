@@ -307,8 +307,12 @@ contains
         end if
       end if
       if ( si_outer_transport /= si_outer_transport_none .AND. cheap_update) then
-          write( log_scratch_space, '(A)' ) 'Cheap update cannot be used with si_outer_transport options'
-          call log_event( log_scratch_space, LOG_LEVEL_ERROR )
+        write( log_scratch_space, '(A)' ) 'Cheap update cannot be used with si_outer_transport options'
+        call log_event( log_scratch_space, LOG_LEVEL_ERROR )
+      end if
+      if ( substep_transport /= substep_transport_off .AND. cheap_update) then
+        write( log_scratch_space, '(A)' ) 'Cheap update cannot be used with substep_transport'
+        call log_event( log_scratch_space, LOG_LEVEL_ERROR )
       end if
 
       ! Find splitting used by dry field
