@@ -30,7 +30,14 @@ contains
   !> @details Runs algorithm layer adjoint tests.
   subroutine run()
 
-    use gen_adj_kernel_tests_mod,           only : run_gen_adj_kernel_tests
+    ! PSyAD generated tests
+    use gen_adj_kernel_tests_mod,                   only : run_gen_adj_kernel_tests
+
+    ! Handwritten tests
+    use adjt_interpolation_alg_mod,                 only : adjt_interp_w3wth_to_w2_alg, &
+                                                           adjt_interp_w2_to_w3wth_alg
+    use adjt_convert_cart2sphere_vector_alg_mod,    only : adjt_convert_cart2sphere_vector_alg
+    use adjt_sci_convert_hdiv_field_alg_mod,        only : adjt_sci_convert_hdiv_field_alg
 
     implicit none
 
@@ -44,6 +51,11 @@ contains
 
     call log_event( "TESTING generated adjoint kernels", LOG_LEVEL_INFO )
     call run_gen_adj_kernel_tests( mesh, chi, panel_id )
+    call log_event( "TESTING handwritten adjoints", LOG_LEVEL_INFO )
+    call adjt_convert_cart2sphere_vector_alg( mesh )
+    call adjt_sci_convert_hdiv_field_alg( mesh, chi, panel_id )
+    call adjt_interp_w3wth_to_w2_alg( mesh )
+    call adjt_interp_w2_to_w3wth_alg( mesh )
     call log_event( "TESTING COMPLETE", LOG_LEVEL_INFO )
 
   end subroutine run

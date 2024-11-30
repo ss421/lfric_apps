@@ -27,7 +27,8 @@ export INTERNAL_DEPENDENCIES = $(CORE_ROOT_DIR)/infrastructure \
                                $(APPS_ROOT_DIR)/science/jedi_lfric_interface \
                                $(CORE_ROOT_DIR)/components/lfric-xios \
                                $(APPS_ROOT_DIR)/science/gungho \
-                               $(APPS_ROOT_DIR)/science/linear
+                               $(APPS_ROOT_DIR)/science/linear \
+                               $(APPS_ROOT_DIR)/science/adjoint
 
 META_VN             ?= HEAD
 export META_FILE_DIR = $(PROJECT_DIR)/rose-meta/$(PROJECT_NAME)/$(META_VN)
@@ -118,7 +119,7 @@ build: ALWAYS
 	$(call MESSAGE,Extracting $(PROJECT_NAME))
 	$(call MESSAGE,========================================)
 	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/extract.mk \
-	              SOURCE_DIR=source \
+	          SOURCE_DIR=source \
 	          WORKING_DIR=$(WORKING_DIR)
 	$(call MESSAGE,=========================================================)
 	$(call MESSAGE,Generating $(PROJECT) namelist loaders)
@@ -187,7 +188,8 @@ integration-tests/%: export IMPORT_PARTS  = $(CORE_ROOT_DIR)/infrastructure \
                                             $(CORE_ROOT_DIR)/components/lfric-xios \
                                             $(APPS_ROOT_DIR)/science/jedi_lfric_interface \
                                             $(APPS_ROOT_DIR)/science/gungho \
-                                            $(APPS_ROOT_DIR)/science/linear
+                                            $(APPS_ROOT_DIR)/science/linear \
+                                            $(APPS_ROOT_DIR)/science/adjoint
 integration-tests/%: export META_FILE_DIR = rose-meta/jedi_lfric_tests/HEAD
 integration-tests/%: export PROJECT       = $(PROJECT_NAME)
 integration-tests/%: export SOURCE_DIR    = source

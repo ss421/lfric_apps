@@ -10,21 +10,17 @@
 !>
 module transform_winds_mod
 
-  use constants_mod,                  only: i_def
-  use field_collection_mod,           only: field_collection_type
-  use field_mod,                      only: field_type
-  use fs_continuity_mod,              only: W2H, W3
-  use function_space_mod,             only: function_space_type
-  use function_space_collection_mod,  only: function_space_collection
-  use map_fd_to_prognostics_alg_mod,  only: set_wind
-  use mesh_mod,                       only: mesh_type
-  use physics_mappings_alg_mod,       only: map_physics_winds, &
-                                            split_wind_alg
+  use constants_mod,                 only: i_def
+  use field_collection_mod,          only: field_collection_type
+  use field_mod,                     only: field_type, field_proxy_type
 
   implicit none
 
   private
-  public :: wind_scalar_to_vector, wind_vector_to_scalar
+  public :: wind_scalar_to_vector
+  public :: adj_wind_scalar_to_vector
+  public :: wind_vector_to_scalar
+  public :: adj_wind_vector_to_scalar
 
   contains
 
@@ -32,6 +28,8 @@ module transform_winds_mod
   !>
   !> @param[in,out] fields  A field collection that contains the wind fields
   subroutine wind_scalar_to_vector( fields )
+
+    use interpolation_alg_mod, only : interp_w3wth_to_w2_alg
 
     implicit none
 
@@ -41,66 +39,107 @@ module transform_winds_mod
     type( field_type ), pointer :: u_in_w3
     type( field_type ), pointer :: v_in_w3
     type( field_type ), pointer :: w_in_wth
-    type( field_type ), pointer :: vector_wind
+    type( field_type ), pointer :: u_in_w2
 
-    nullify( u_in_w3, v_in_w3, w_in_wth, vector_wind )
+    nullify( u_in_w3, v_in_w3, w_in_wth, u_in_w2 )
 
     ! Get the fields
     call fields%get_field('u_in_w3', u_in_w3)
     call fields%get_field('v_in_w3', v_in_w3)
     call fields%get_field('w_in_wth', w_in_wth)
-    call fields%get_field('u', vector_wind)
+    call fields%get_field('u', u_in_w2)
 
     ! Interpolate cell centred zonal/meridional winds
-    call set_wind( vector_wind, u_in_w3, v_in_w3, w_in_wth )
+    call interp_w3wth_to_w2_alg(u_in_w2, u_in_w3, v_in_w3, w_in_wth)
 
   end subroutine wind_scalar_to_vector
 
-  !> @brief  Interpolate the edge based vector wind to the cell centre scalar winds
+  !> @brief  Adjoint of interpolation of the cell-centred scalar winds to the edge-based vector wind
   !>
   !> @param[in,out] fields  A field collection that contains the wind fields
-  subroutine wind_vector_to_scalar( fields )
+  subroutine adj_wind_scalar_to_vector( fields )
+
+    use adj_interpolation_alg_mod, only : adj_interp_w3wth_to_w2_alg
 
     implicit none
 
     type( field_collection_type ), intent(inout) :: fields
 
     ! Local
-    type( function_space_type ), pointer :: fs
-    type( mesh_type ),           pointer :: mesh
+    type( field_type ), pointer :: u_in_w3
+    type( field_type ), pointer :: v_in_w3
+    type( field_type ), pointer :: w_in_wth
+    type( field_type ), pointer :: u_in_w2
+
+    nullify( u_in_w3, v_in_w3, w_in_wth, u_in_w2 )
+
+    ! Get the fields
+    call fields%get_field('u_in_w3', u_in_w3)
+    call fields%get_field('v_in_w3', v_in_w3)
+    call fields%get_field('w_in_wth', w_in_wth)
+    call fields%get_field('u', u_in_w2)
+
+    ! Adjoint-interpolate cell centred zonal/meridional winds
+    call adj_interp_w3wth_to_w2_alg(u_in_w2, u_in_w3, v_in_w3, w_in_wth)
+
+  end subroutine adj_wind_scalar_to_vector
+
+  !> @brief  Interpolate the edge based vector wind to the cell centre scalar winds
+  !>
+  !> @param[in,out] fields  A field collection that contains the wind fields
+  subroutine wind_vector_to_scalar( fields )
+
+    use interpolation_alg_mod, only : interp_w2_to_w3wth_alg
+
+    implicit none
+
+    type( field_collection_type ), intent(inout) :: fields
+
+    ! Local
     type( field_type ),          pointer :: u_in_w3
     type( field_type ),          pointer :: v_in_w3
     type( field_type ),          pointer :: w_in_wth
-    type( field_type ),          pointer :: vector_wind
-    type( field_type )                   :: dummy_w2h
-    type( field_type )                   :: dummy_w3
-    integer( kind=i_def ),     parameter :: element_order = 0
+    type( field_type ),          pointer :: u_in_w2
 
-    nullify( fs, mesh, u_in_w3, v_in_w3, w_in_wth, vector_wind )
+    nullify( u_in_w3, v_in_w3, w_in_wth, u_in_w2 )
 
     ! Get the fields from the prognostic_fields collection
     call fields%get_field('u_in_w3', u_in_w3)
     call fields%get_field('v_in_w3', v_in_w3)
     call fields%get_field('w_in_wth', w_in_wth)
-    call fields%get_field('u', vector_wind)
+    call fields%get_field('u', u_in_w2)
 
-    ! Setup dummy fields
-    mesh => vector_wind%get_mesh()
-
-    ! Get W3 function space from the field
-    fs => function_space_collection%get_fs(mesh, element_order, W3)
-    call dummy_w3%initialise(fs, "dummy_w3")
-
-    ! Get W2 function space from the field
-    fs => function_space_collection%get_fs(mesh, element_order, W2H)
-    call dummy_w2h%initialise(fs, "dummy_w2h")
-
-    ! Get horizontal
-    call map_physics_winds( u_in_w3, v_in_w3, dummy_w3, vector_wind )
-
-    ! Get vertical
-    call split_wind_alg( dummy_w2h, dummy_w2h, w_in_wth, vector_wind, mesh )
+    call interp_w2_to_w3wth_alg(u_in_w2, u_in_w3, v_in_w3, w_in_wth)
 
   end subroutine wind_vector_to_scalar
+
+  !> @brief  Adjoint of interpolation of the edge-based vector wind to the cell-centred scalar winds
+  !>
+  !> @param[in,out] fields  A field collection that contains the wind fields
+  subroutine adj_wind_vector_to_scalar( fields )
+
+    use adj_interpolation_alg_mod, only : adj_interp_w2_to_w3wth_alg
+
+    implicit none
+
+    type( field_collection_type ), intent(inout) :: fields
+
+    ! Local
+    type( field_type ),          pointer :: u_in_w3
+    type( field_type ),          pointer :: v_in_w3
+    type( field_type ),          pointer :: w_in_wth
+    type( field_type ),          pointer :: u_in_w2
+
+    nullify( u_in_w3, v_in_w3, w_in_wth, u_in_w2 )
+
+    ! Get the fields from the prognostic_fields collection
+    call fields%get_field('u_in_w3', u_in_w3)
+    call fields%get_field('v_in_w3', v_in_w3)
+    call fields%get_field('w_in_wth', w_in_wth)
+    call fields%get_field('u', u_in_w2)
+
+    call adj_interp_w2_to_w3wth_alg(u_in_w2, u_in_w3, v_in_w3, w_in_wth)
+
+  end subroutine adj_wind_vector_to_scalar
 
 end module transform_winds_mod

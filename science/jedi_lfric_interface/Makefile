@@ -37,7 +37,8 @@ export PROJECT_DIR := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
 
 export INTERNAL_DEPENDENCIES = $(CORE_ROOT_DIR)/infrastructure \
                                $(APPS_ROOT_DIR)/science/gungho \
-                               $(CORE_ROOT_DIR)/components/lfric-xios
+                               $(CORE_ROOT_DIR)/components/lfric-xios \
+                               $(APPS_ROOT_DIR)/science/adjoint
 
 META_VN       ?= HEAD
 META_FILE_DIR  = $(PROJECT_DIR)/rose-meta/$(PROJECT_NAME)/$(META_VN)

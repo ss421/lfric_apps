@@ -18,11 +18,11 @@ module jedi_lfric_wind_fields_mod
   use fs_continuity_mod,             only : W2, W3, Wtheta
   use function_space_collection_mod, only : function_space_collection
   use function_space_mod,            only : function_space_type
+  use interpolation_alg_mod,         only : interp_w3wth_to_w2_alg
   use log_mod,                       only : log_event,         &
                                             log_scratch_space, &
                                             LOG_LEVEL_ERROR,   &
                                             LOG_LEVEL_DEBUG
-  use map_fd_to_prognostics_alg_mod, only : set_wind
   use mesh_collection_mod,           only : mesh_collection
   use mesh_mod,                      only : mesh_type
   use namelist_mod,                  only : namelist_type
@@ -161,7 +161,7 @@ contains
       call vector_wind%initialise(fs, "u")
 
       ! Interpolate cell-centre to edge
-      call set_wind(vector_wind, u_in_w3, v_in_w3, w_in_wth)
+      call interp_w3wth_to_w2_alg(vector_wind, u_in_w3, v_in_w3, w_in_wth)
 
       ! Remove the scalar winds
       call linear_state%remove_field("u_in_w3")
