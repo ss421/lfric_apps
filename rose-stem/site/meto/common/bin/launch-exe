@@ -175,12 +175,12 @@ if [[ ! -z "${XIOS_SERVER_MODE}" && "${XIOS_SERVER_MODE}" = "True" ]] ; then
     NAMELIST_FILE=""
     XIOS_EXEC=""
   else
-    XIOS_CORES_PER_NODE="$(( (mpi_parts_xios+xios_nodes-1) / xios_nodes ))"
+    XIOS_CORES_PER_NODE="$(( mpi_parts_xios / xios_nodes ))"
     if [ "${TARGET_PLATFORM}" = "meto-spice" ] ; then
       XIOS_EXEC=" : -n ${XIOS_SERVER_RANKS} ${XIOS_SERVER_EXEC_PATH}"
     elif [ "${TARGET_PLATFORM}" = "meto-ex1a" ] ; then
       if [ "${RUN_METHOD}" = "mpiexec" ] ; then
-        XIOS_EXEC=" : --cpu-bind=depth --np ${XIOS_SERVER_RANKS} --ppn ${CORES_PER_NODE} ${XIOS_SERVER_EXEC_PATH}"
+        XIOS_EXEC=" : --cpu-bind=depth --np ${XIOS_SERVER_RANKS} --ppn ${XIOS_CORES_PER_NODE} ${XIOS_SERVER_EXEC_PATH}"
       fi
     else
       XIOS_CORES_PER_NUMA="$(( (XIOS_CORES_PER_NODE+NUMA_REGIONS_PER_NODE-1) / NUMA_REGIONS_PER_NODE ))"
