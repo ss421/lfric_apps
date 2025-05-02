@@ -1590,11 +1590,10 @@ contains
     ! Set up indexing data needed for plume scavenging of UKCA tracers in the
     ! GR convection scheme
     if (l_ukca_plume_scav) then
-      n = 4
+      n = size(tracer_names)
       allocate(nm_spec_active(n))
-
       do i = 1, n
-        nm_spec_active(i) = tracer_names(i+7)(1:nmspec_len)
+        nm_spec_active(i) = tracer_names(i)(1:nmspec_len)
       end do
 
       call ukca_set_conv_indices()
