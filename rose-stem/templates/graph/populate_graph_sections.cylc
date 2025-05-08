@@ -34,6 +34,13 @@
     {% set plot = false %}
 {% endif %}
 
+{# memory plot EX settings #}
+{% if "memory_plot_ex" in task_values and task_values["memory_plot_ex"] and task_ns.platform == "ex1a" %}
+    {% set memory_plot_ex = true %}
+{% else %}
+    {% set memory_plot_ex = false %}
+{% endif %}
+
 {# phystest settings #}
 {% if "phystest_str" in task_values %}
     {% set phystest = true %}
@@ -213,6 +220,23 @@
         {% do graph_sections.append([
             application_run_task,
             plot_task]) %}
+    {% endif %}
+
+    {% if memory_plot_ex %}
+        {% set memory_plot_ex_task = "memory_plot_ex_"~
+                                     task_ns.application~"_"~
+                                     task_ns.conf_name~"_"~
+                                     task_ns.platform~"_"~
+                                     task_ns.compiler~"_"~
+                                     task_ns.extras %}
+        {% set memory_values = task_values.copy() %}
+        {% do memory_values.update({"application_run_task": application_run_task}) %}
+        {% if memory_plot_ex_task not in tasks_to_run %}
+            {% do tasks_to_run.update({memory_plot_ex_task: memory_values}) %}
+        {% endif %}
+        {% do graph_sections.append([
+            application_run_task,
+            memory_plot_ex_task]) %}
     {% endif %}
 
     {% if phystest %}

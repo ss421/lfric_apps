@@ -4,6 +4,25 @@
 # The file LICENCE, distributed with this code, contains details of the terms
 # under which the code may be used.
 
+# Environment Variables used to control the execution:
+# ====================================================
+# TARGET_PLATFORM (string)
+# RUN_METHOD (string)
+# HYPERTHREADS (int)
+# CORES_PER_NODE (int)
+# NUMA_REGIONS_PER_NODE (int)
+# OMP_NUM_THREADS (int)
+# TOTAL_RANKS (int)
+# XIOS_SERVER_MODE (int)
+# XIOS_SERVER_RANKS (int)
+# xios_nodes (int)
+# mpi_parts_xios (int)
+# CORES_PER_NODE_OVERRIDE (int)
+# BIN_DIR (string)
+# EXEC_NAME (string)
+# PAT_EXE_EXTEN (string)
+# MEMORY_PROFILE (bool)
+
 EXEC_PATH="${BIN_DIR}/${EXEC_NAME}${PAT_EXE_EXTEN}"
 NAMELIST_FILE=configuration.nml
 XIOS_SERVER_EXEC_PATH="xios_server.exe"
@@ -143,8 +162,9 @@ fi
 # Construct launcher options
 #===========================================
 LAUNCHER_OPTS=""
+#XIOS_OPTS=""
 if [ "${RUN_METHOD}" = "aprun" ] ; then
-  if [ "${TARGET_PLATFORM}" = "meto-spice" ] || [ "${TARGET_PLATFORM}" = "meto-ex1a" ] ; then
+  if [ "${TARGET_PLATFORM}" != "meto-xc40" ] ; then
     echo Launcher \"aprun\" is specific to Cray XC40 platforms.
     exit 1
   else
@@ -154,54 +174,64 @@ if [ "${RUN_METHOD}" = "aprun" ] ; then
       LAUNCHER_OPTS="-cc depth -n ${TOTAL_RANKS} -N ${SET_CORES_PER_NODE} -S ${SET_MPI_TASKS_PER_NUMA_REGION} -d ${OMP_NUM_THREADS} -j ${HYPERTHREADS}"
     fi
   fi
-elif [ "${RUN_METHOD}" = "mpiexec" ] ; then
+  if [[ ! -z "${XIOS_SERVER_MODE}" && "${XIOS_SERVER_MODE}" = "True" ]] ; then
+    XIOS_CORES_PER_NODE="$(( mpi_parts_xios / xios_nodes ))"
+    XIOS_CORES_PER_NUMA="$(( (XIOS_CORES_PER_NODE+NUMA_REGIONS_PER_NODE-1) / NUMA_REGIONS_PER_NODE ))"
+    XIOS_OPTS=" : -n ${XIOS_SERVER_RANKS} -S ${XIOS_CORES_PER_NUMA} "
+  fi
+  
+elif [ "${RUN_METHOD}" = "mpiexec" ] ; then    
   if [ "${TARGET_PLATFORM}" = "meto-ex1a" ] ; then
     if (( "${CORES_PER_NODE_OVERRIDE}" == "0" )) && (( "${CHECK_LOCAL_CPUS_USED}" <= "${SET_CORES_PER_NODE}" )) ; then
+      LAUNCHER_OPTS="--cpu-bind=depth --np ${TOTAL_RANKS} --depth ${OMP_NUM_THREADS}"
+    elif [[ ! -z "${XIOS_SERVER_MODE}" && "${XIOS_SERVER_MODE}" = "True" && \
+	      "${xios_nodes}" = "0" ]] ; then
       LAUNCHER_OPTS="--cpu-bind=depth --np ${TOTAL_RANKS} --depth ${OMP_NUM_THREADS}"
     else
       LAUNCHER_OPTS="--cpu-bind=depth --np ${TOTAL_RANKS} --ppn ${SET_CORES_PER_NODE} --depth ${OMP_NUM_THREADS}"
     fi
+    if [[ ! -z "${XIOS_SERVER_MODE}" && "${XIOS_SERVER_MODE}" = "True" ]] ; then
+      if [ "${xios_nodes}" = "0" ] ; then
+	XIOS_OPTS=" : --cpu-bind=depth --np ${XIOS_SERVER_RANKS} "
+      else
+	XIOS_CORES_PER_NODE="$(( mpi_parts_xios / xios_nodes ))"
+	XIOS_OPTS=" : --cpu-bind=depth --np ${XIOS_SERVER_RANKS} --ppn ${XIOS_CORES_PER_NODE} "
+      fi
+    fi
+
   elif [ "${SITE_MPI_LAUNCHER_OPTS}" != "" ] ; then
     LAUNCHER_OPTS=${SITE_MPI_LAUNCHER_OPTS}
   else
     LAUNCHER_OPTS="-n ${TOTAL_RANKS}"
+    if [[ ! -z "${XIOS_SERVER_MODE}" && "${XIOS_SERVER_MODE}" = "True" ]] ; then
+      XIOS_OPTS=" : -n ${XIOS_SERVER_RANKS} "
+    fi    
   fi
-elif [ "${RUN_METHOD}" = "srun" ] ; then
-  LAUNCHER_OPTS="--ntasks ${TOTAL_RANKS}"
+
 elif [ "${RUN_METHOD}" = "executable" ] ; then
   LAUNCHER_OPTS=""
 fi
 
-# Construct XIOS server options
-#===========================================
-if [[ ! -z "${XIOS_SERVER_MODE}" && "${XIOS_SERVER_MODE}" = "True" ]] ; then
-  if [ "${RUN_METHOD}" = "srun" ] ; then
-    echo "0-$((TOTAL_RANKS-XIOS_SERVER_RANKS-1)) ${EXEC_PATH} ${NAMELIST_FILE}" > ${SLURM_MPMD_FILE}
-    echo "$((TOTAL_RANKS-XIOS_SERVER_RANKS))-$((TOTAL_RANKS-1)) ${XIOS_SERVER_EXEC_PATH}" >> ${SLURM_MPMD_FILE}
-    LAUNCHER_OPTS="--multi-prog ${SLURM_MPMD_FILE}"
-    EXEC_PATH=""
-    NAMELIST_FILE=""
-    XIOS_EXEC=""
-  else
-    XIOS_CORES_PER_NODE="$(( mpi_parts_xios / xios_nodes ))"
-    if [ "${TARGET_PLATFORM}" = "meto-spice" ] ; then
-      XIOS_EXEC=" : -n ${XIOS_SERVER_RANKS} ${XIOS_SERVER_EXEC_PATH}"
-    elif [ "${TARGET_PLATFORM}" = "meto-ex1a" ] ; then
-      if [ "${RUN_METHOD}" = "mpiexec" ] ; then
-        XIOS_EXEC=" : --cpu-bind=depth --np ${XIOS_SERVER_RANKS} --ppn ${XIOS_CORES_PER_NODE} ${XIOS_SERVER_EXEC_PATH}"
-      fi
-    else
-      XIOS_CORES_PER_NUMA="$(( (XIOS_CORES_PER_NODE+NUMA_REGIONS_PER_NODE-1) / NUMA_REGIONS_PER_NODE ))"
-      XIOS_EXEC=" : -n ${XIOS_SERVER_RANKS} -S ${XIOS_CORES_PER_NUMA} ${XIOS_SERVER_EXEC_PATH}"
-    fi
-  fi
-else
-  XIOS_EXEC=""
+if [ -z "$XIOS_OPTS" ] ; then
+  XIOS_SERVER_EXEC_PATH=""
 fi
+
 
 # Launch the model (Or, test the launch command)
 #===============================================
-EXEC_COMMAND="${LAUNCHER} ${LAUNCHER_OPTS} ${EXEC_PATH} ${NAMELIST_FILE} ${XIOS_EXEC}"
+EXEC_COMMAND="${LAUNCHER} ${LAUNCHER_OPTS} ${EXEC_PATH} ${NAMELIST_FILE} ${XIOS_OPTS}${XIOS_SERVER_EXEC_PATH}"
+
+if [[ ! -z "${MEMORY_PROFILE}" && "${MEMORY_PROFILE}" = "True" ]] ; then
+  XIOS_MEM_TIME=""
+  if [[ ! -z "$XIOS_OPTS" ]] ; then
+    XIOS_MEM_TIME="/usr/bin/time -f max_mem_xios_server_%Mkb "
+  fi
+  if [ "${TARGET_PLATFORM}" = "meto-ex1a" ] ; then
+    EXEC_COMMAND="${LAUNCHER} --line-buffer --label ${LAUNCHER_OPTS} /usr/bin/time -f max_mem_${EXEC_NAME}_%Mkb ${EXEC_PATH} ${NAMELIST_FILE} ${XIOS_OPTS}${XIOS_MEM_TIME}${XIOS_SERVER_EXEC_PATH}"
+  else
+    EXEC_COMMAND="${LAUNCHER} -l ${LAUNCHER_OPTS} /usr/bin/time -f max_mem_${EXEC_NAME}_%Mkb ${EXEC_PATH} ${NAMELIST_FILE} ${XIOS_OPTS}${XIOS_MEM_TIME}${XIOS_SERVER_EXEC_PATH}"
+  fi
+fi
 
 if [ "${TEST_MODE}" = 0 ] ; then
     # SLURM_MPMD_FILE?
@@ -209,7 +239,7 @@ if [ "${TEST_MODE}" = 0 ] ; then
 	test_error=0
     else
         test_error=1
-	printf "Error: ${TEST_LAUNCH_EXE_EXEC} != ${EXEC_COMMAND}" >&2
+	printf "Error: \n%s \n\t!= \n%s\n" "${TEST_LAUNCH_EXE_EXEC}" "${EXEC_COMMAND}" >&2
     fi
     exit ${test_error}
 fi
@@ -225,5 +255,21 @@ error=$?
 if [ ${error} != 0 ] ; then
   echo "Execution failed, Error return code ${error}."
 fi
+
+if [[ -v MEMORY_PROFILE && "${TARGET_PLATFORM}" = "meto-ex1a" ]] ; then
+  # report on Memory usage in job.out
+  number_of_nodes=$(sort -u "$PBS_NODEFILE" | wc -l)
+  cat << 'EOF' > Scr_Memory.job
+#!/bin/bash
+echo "$(uname -n) $PALS_NODEID $(( $(cat /sys/fs/cgroup/memory/pbspro.service/jobid/$PBS_JOBID/memory.max_usage_in_bytes) / 1048576 ))"
+EOF
+  chmod u+x Scr_Memory.job
+  echo "Maximum memory usage per node (MiB)"
+  {
+    mpiexec -n "$number_of_nodes" --ppn 1 ./Scr_Memory.job
+  } | sort -r -n -k3 | column -t -o" " | sed 's/^/  /'
+
+fi
+
 
 exit ${error}

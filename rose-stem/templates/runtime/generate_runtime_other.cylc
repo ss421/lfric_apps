@@ -27,6 +27,23 @@
             PLOT_DIR       = {{task_output_dir}}/plots
             PLOT_CONFIG    = {{task_values["plot_str"]}}
 
+{% elif task.startswith("memory_plot_ex") %}
+
+    {% for family in task_values["plot_families"] %}
+        {% set inherit.str = inherit.str~","~family|upper %}
+    {% endfor %}
+
+    {% set log_dir = "$CYLC_WORKFLOW_RUN_DIR/log/job/1/"~
+                     task_values["application_run_task"]~
+                     "/NN" %}
+
+    [[{{task}}]]
+        inherit={{inherit.str|upper}}
+        script = 'rose task-run --app-key=memory_profile'
+        [[[environment]]]
+            PLOT_DIR = {{task_output_dir}}/plots
+            TASK_LOG_DIR = {{log_dir}}
+
 {% elif task.startswith("check") %}
 {# Check KGO Checksum tasks #}
 

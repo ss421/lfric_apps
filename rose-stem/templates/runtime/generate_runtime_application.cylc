@@ -118,6 +118,10 @@
             mpi_parts_xios          = {{task_values["mpi_parts_xios"]}}
             PAT_EXE_EXTEN           = {{PAT_EXE_EXTEN}}
             CORES_PER_NODE_OVERRIDE = {{task_values["task_ranks_per_node"]}}
+            {% if "memory_plot_ex" in task_values %}
+            MEMORY_PROFILE          = {{task_values["memory_plot_ex"]}}
+            {% endif %}
+
 
 {% if task_ns.application == "lfric_coupled" %}
     {% include "templates/runtime/coupled_task_environment.cylc" %}
