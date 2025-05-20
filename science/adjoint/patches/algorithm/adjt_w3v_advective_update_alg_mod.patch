@@ -1,13 +1,16 @@
-@@ -13,7 +13,7 @@
+@@ -13,9 +13,9 @@
      use finite_element_config_mod, only : element_order_h, element_order_v
      use fs_continuity_mod, only : w2, w3
      use operator_mod, only : operator_type
 -    use constants_mod, only : i_def, r_def
 +    use constants_mod, only : i_def, r_def, r_tran
      use setop_random_kernel_mod, only : setop_random_kernel_type
-     use log_mod, only : log_event, log_level_error, log_level_info, log_scratch_space
+-    use log_mod, only : log_event, log_level_error, log_level_info, log_scratch_space
++    use log_mod, only : log_event, log_level_error, log_level_info, log_scratch_space, log_level_debug
      real(kind=r_def), parameter :: overall_tolerance = 1500.0_r_def
-@@ -28,51 +28,41 @@
+     type(mesh_type), pointer, intent(in) :: mesh
+     type(field_type), dimension(3), intent(in), optional :: chi
+@@ -28,51 +28,54 @@
      type(operator_type) :: m3_inv
      type(field_type) :: advective_increment_input
      type(field_type) :: tracer_input
@@ -16,6 +19,8 @@
      real(kind=r_def) :: tracer_inner_prod
 -    real(kind=r_def) :: wind_inner_prod
 -    real(kind=r_def) :: inner1
++    real(kind=r_def) :: advective_increment_sf
++    real(kind=r_def) :: tracer_sf
 +    real(kind=r_tran) :: inner1
      real(kind=r_def) :: advective_increment_advective_increment_input_inner_prod
      real(kind=r_def) :: tracer_tracer_input_inner_prod
@@ -24,10 +29,10 @@
 +    real(kind=r_tran) :: inner2
      real(kind=r_def) :: MachineTol
      real(kind=r_def) :: relative_diff
++    real(kind=r_def), parameter :: eps = 1.0e-30_r_def
  
--    vector_space_w2_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w2)
+     vector_space_w2_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w2)
 -    vector_space_w3_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w3)
-+    vector_space_w2_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w2)
 +    vector_space_w3_ptr => function_space_collection % get_fs(mesh, element_order_h, element_order_v, w3, 6, ndata_first = .false.)
      call advective_increment%initialise(vector_space=vector_space_w3_ptr, name='advective_increment')
      call tracer%initialise(vector_space=vector_space_w3_ptr, name='tracer')
@@ -46,14 +51,23 @@
  &setop_random_kernel_type(m3_inv), w3v_advective_update_kernel_type(advective_increment, tracer, wind, m3_inv), &
 -&x_innerproduct_x(advective_increment_inner_prod, advective_increment), x_innerproduct_x(tracer_inner_prod, tracer), &
 -&x_innerproduct_x(wind_inner_prod, wind))
--    inner1 = 0.0_r_def
++&x_innerproduct_x(advective_increment_inner_prod, advective_increment), x_innerproduct_x(tracer_inner_prod, tracer))
++    write( log_scratch_space, * ) "adjt_w3v_advective_update inner products:"
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "advective_increment inner product = ", advective_increment_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "tracer inner product = ", tracer_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    advective_increment_sf = 1.0_r_def / (advective_increment_inner_prod + eps)
++    tracer_sf = 1.0_r_def / (tracer_inner_prod + eps)
+     inner1 = 0.0_r_def
 -    inner1 = inner1 + advective_increment_inner_prod
 -    inner1 = inner1 + tracer_inner_prod
 -    inner1 = inner1 + wind_inner_prod
-+&x_innerproduct_x(advective_increment_inner_prod, advective_increment), x_innerproduct_x(tracer_inner_prod, tracer))
-+    inner1 = 0.0_r_tran
-+    inner1 = inner1 + real(advective_increment_inner_prod, r_tran)
-+    inner1 = inner1 + real(tracer_inner_prod, r_tran)
++    inner1 = inner1 + real(advective_increment_inner_prod * advective_increment_sf, r_tran)
++    inner1 = inner1 + real(tracer_inner_prod * tracer_sf, r_tran)
++    call invoke( inc_a_times_X( advective_increment_sf, advective_increment ), &
++                 inc_a_times_X( tracer_sf, tracer ) )
      advective_increment_advective_increment_input_inner_prod = 0.0_r_def
      tracer_tracer_input_inner_prod = 0.0_r_def
 -    wind_wind_input_inner_prod = 0.0_r_def

@@ -1,4 +1,4 @@
-@@ -9,8 +9,8 @@
+@@ -9,12 +9,12 @@
      use mesh_mod, only : mesh_type
      use function_space_collection_mod, only : function_space_collection
      use tl_horizontal_mass_flux_kernel_mod, only : tl_horizontal_mass_flux_kernel_type
@@ -8,7 +8,12 @@
      use fs_continuity_mod, only : w2, w3
      use constants_mod, only : i_def, r_def
      use setop_random_kernel_mod, only : setop_random_kernel_type
-@@ -26,60 +26,44 @@
+-    use log_mod, only : log_event, log_level_error, log_level_info, log_scratch_space
++    use log_mod, only : log_event, log_level_error, log_level_info, log_scratch_space, log_level_debug
+     real(kind=r_def), parameter :: overall_tolerance = 1500.0_r_def
+     type(mesh_type), pointer, intent(in) :: mesh
+     type(field_type), dimension(3), intent(in), optional :: chi
+@@ -26,60 +26,57 @@
      type(field_type) :: wind
      type(field_type) :: reconstruction
      type(field_type) :: mass_flux_input
@@ -19,6 +24,8 @@
 -    real(kind=r_def) :: ls_wind_inner_prod
      real(kind=r_def) :: wind_inner_prod
 -    real(kind=r_def) :: reconstruction_inner_prod
++    real(kind=r_def) :: mass_flux_sf
++    real(kind=r_def) :: wind_sf
      real(kind=r_def) :: inner1
      real(kind=r_def) :: mass_flux_mass_flux_input_inner_prod
 -    real(kind=r_def) :: ls_wind_ls_wind_input_inner_prod
@@ -27,10 +34,10 @@
      real(kind=r_def) :: inner2
      real(kind=r_def) :: MachineTol
      real(kind=r_def) :: relative_diff
++    real(kind=r_def), parameter :: eps = 1.0e-30_r_def
  
--    vector_space_w2_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w2)
+     vector_space_w2_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w2)
 -    vector_space_w3_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w3)
-+    vector_space_w2_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w2)
 +    vector_space_w3_ptr => function_space_collection % get_fs(mesh, element_order_h, element_order_v, w3, 6, ndata_first = .false.)
      call mass_flux%initialise(vector_space=vector_space_w2_ptr, name='mass_flux')
      call ls_wind%initialise(vector_space=vector_space_w2_ptr, name='ls_wind')
@@ -55,11 +62,23 @@
 +&tl_horizontal_mass_flux_kernel_type(mass_flux, ls_wind, wind, reconstruction), &
 +&x_innerproduct_x(mass_flux_inner_prod, mass_flux), &
 +&x_innerproduct_x(wind_inner_prod, wind))
++    write( log_scratch_space, * ) "atlt_horizontal_mass_flux inner products:"
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "mass_flux inner product = ", mass_flux_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "wind inner product = ", wind_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    mass_flux_sf = 1.0_r_def / (mass_flux_inner_prod + eps)
++    wind_sf = 1.0_r_def / (wind_inner_prod + eps)
      inner1 = 0.0_r_def
-     inner1 = inner1 + mass_flux_inner_prod
+-    inner1 = inner1 + mass_flux_inner_prod
 -    inner1 = inner1 + ls_wind_inner_prod
-     inner1 = inner1 + wind_inner_prod
+-    inner1 = inner1 + wind_inner_prod
 -    inner1 = inner1 + reconstruction_inner_prod
++    inner1 = inner1 + mass_flux_inner_prod * mass_flux_sf
++    inner1 = inner1 + wind_inner_prod * wind_sf
++    call invoke( inc_a_times_X( mass_flux_sf, mass_flux ), &
++                 inc_a_times_X( wind_sf, wind ) )
      mass_flux_mass_flux_input_inner_prod = 0.0_r_def
 -    ls_wind_ls_wind_input_inner_prod = 0.0_r_def
      wind_wind_input_inner_prod = 0.0_r_def

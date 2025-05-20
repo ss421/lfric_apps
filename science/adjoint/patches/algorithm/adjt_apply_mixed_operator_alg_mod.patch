@@ -1,4 +1,13 @@
-@@ -46,16 +46,12 @@
+@@ -15,7 +15,7 @@
+     use operator_mod, only : operator_type
+     use constants_mod, only : i_def, r_def
+     use setop_random_kernel_mod, only : setop_random_kernel_type
+-    use log_mod, only : log_event, log_level_error, log_level_info, log_scratch_space
++    use log_mod, only : log_event, log_level_error, log_level_info, log_scratch_space, log_level_debug
+     real(kind=r_def), parameter :: overall_tolerance = 1500.0_r_def
+     type(mesh_type), pointer, intent(in) :: mesh
+     type(field_type), dimension(3), intent(in), optional :: chi
+@@ -46,16 +46,18 @@
      type(field_type) :: wind_uv_input
      type(field_type) :: wind_w_input
      type(field_type) :: exner_input
@@ -12,10 +21,16 @@
      real(kind=r_def) :: exner_inner_prod
 -    real(kind=r_def) :: mt_lumped_inv_inner_prod
 -    real(kind=r_def) :: norm_u_inner_prod
++    real(kind=r_def) :: lhs_uv_sf
++    real(kind=r_def) :: lhs_w_sf
++    real(kind=r_def) :: lhs_p_sf
++    real(kind=r_def) :: wind_uv_sf
++    real(kind=r_def) :: wind_w_sf
++    real(kind=r_def) :: exner_sf
      real(kind=r_def) :: inner1
      real(kind=r_def) :: lhs_uv_lhs_uv_input_inner_prod
      real(kind=r_def) :: lhs_w_lhs_w_input_inner_prod
-@@ -63,8 +59,6 @@
+@@ -63,11 +65,10 @@
      real(kind=r_def) :: wind_uv_wind_uv_input_inner_prod
      real(kind=r_def) :: wind_w_wind_w_input_inner_prod
      real(kind=r_def) :: exner_exner_input_inner_prod
@@ -24,7 +39,11 @@
      real(kind=r_def) :: inner2
      real(kind=r_def) :: MachineTol
      real(kind=r_def) :: relative_diff
-@@ -95,28 +89,23 @@
++    real(kind=r_def), parameter :: eps = 1.0e-30_r_def
+ 
+     vector_space_w2_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w2)
+     vector_space_w2h_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w2h)
+@@ -95,52 +96,68 @@
      call wind_uv_input%initialise(vector_space=vector_space_w2h_ptr, name='wind_uv_input')
      call wind_w_input%initialise(vector_space=vector_space_w2v_ptr, name='wind_w_input')
      call exner_input%initialise(vector_space=vector_space_w3_ptr, name='exner_input')
@@ -53,15 +72,47 @@
 -&wind_w), x_innerproduct_x(exner_inner_prod, exner), x_innerproduct_x(mt_lumped_inv_inner_prod, mt_lumped_inv), &
 -&x_innerproduct_x(norm_u_inner_prod, norm_u))
 +&wind_w), x_innerproduct_x(exner_inner_prod, exner))
++    write( log_scratch_space, * ) "adjt_apply_mixed_operator inner products:"
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "lhs_uv inner product = ", lhs_uv_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "lhs_w inner product = ", lhs_w_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "lhs_p inner product = ", lhs_p_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "wind_uv inner product = ", wind_uv_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "wind_w inner product = ", wind_w_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "exner inner product = ", exner_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    lhs_uv_sf = 1.0_r_def / (lhs_uv_inner_prod + eps)
++    lhs_w_sf = 1.0_r_def / (lhs_w_inner_prod + eps)
++    lhs_p_sf = 1.0_r_def / (lhs_p_inner_prod + eps)
++    wind_uv_sf = 1.0_r_def / (wind_uv_inner_prod + eps)
++    wind_w_sf = 1.0_r_def / (wind_w_inner_prod + eps)
++    exner_sf = 1.0_r_def / (exner_inner_prod + eps)
      inner1 = 0.0_r_def
-     inner1 = inner1 + lhs_uv_inner_prod
-     inner1 = inner1 + lhs_w_inner_prod
-@@ -124,23 +113,18 @@
-     inner1 = inner1 + wind_uv_inner_prod
-     inner1 = inner1 + wind_w_inner_prod
-     inner1 = inner1 + exner_inner_prod
+-    inner1 = inner1 + lhs_uv_inner_prod
+-    inner1 = inner1 + lhs_w_inner_prod
+-    inner1 = inner1 + lhs_p_inner_prod
+-    inner1 = inner1 + wind_uv_inner_prod
+-    inner1 = inner1 + wind_w_inner_prod
+-    inner1 = inner1 + exner_inner_prod
 -    inner1 = inner1 + mt_lumped_inv_inner_prod
 -    inner1 = inner1 + norm_u_inner_prod
++    inner1 = inner1 + lhs_uv_inner_prod * lhs_uv_sf
++    inner1 = inner1 + lhs_w_inner_prod * lhs_w_sf
++    inner1 = inner1 + lhs_p_inner_prod * lhs_p_sf
++    inner1 = inner1 + wind_uv_inner_prod * wind_uv_sf
++    inner1 = inner1 + wind_w_inner_prod * wind_w_sf
++    inner1 = inner1 + exner_inner_prod * exner_sf
++    call invoke( inc_a_times_X( lhs_uv_sf, lhs_uv ),   &
++                 inc_a_times_X( lhs_w_sf, lhs_w ),     &
++                 inc_a_times_X( lhs_p_sf, lhs_p ),     &
++                 inc_a_times_X( wind_uv_sf, wind_uv ), &
++                 inc_a_times_X( wind_w_sf, wind_w ),   &
++                 inc_a_times_X( exner_sf, exner )  )
      lhs_uv_lhs_uv_input_inner_prod = 0.0_r_def
      lhs_w_lhs_w_input_inner_prod = 0.0_r_def
      lhs_p_lhs_p_input_inner_prod = 0.0_r_def
@@ -81,7 +132,7 @@
      inner2 = 0.0_r_def
      inner2 = inner2 + lhs_uv_lhs_uv_input_inner_prod
      inner2 = inner2 + lhs_w_lhs_w_input_inner_prod
-@@ -148,8 +132,6 @@
+@@ -148,8 +165,6 @@
      inner2 = inner2 + wind_uv_wind_uv_input_inner_prod
      inner2 = inner2 + wind_w_wind_w_input_inner_prod
      inner2 = inner2 + exner_exner_input_inner_prod

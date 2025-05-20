@@ -1,4 +1,4 @@
-@@ -4,12 +4,13 @@
+@@ -4,19 +4,22 @@
  
    contains
    subroutine atlt_hydrostatic_alg(mesh, chi, panel_id)
@@ -13,16 +13,17 @@
      use finite_element_config_mod, only : element_order_h, element_order_v
      use fs_continuity_mod, only : w2, w3, wtheta
      use constants_mod, only : i_def, r_def
-@@ -17,6 +18,8 @@
+     use quadrature_xyoz_mod, only : quadrature_xyoz_type
      use quadrature_rule_gaussian_mod, only : quadrature_rule_gaussian_type
      use setop_random_kernel_mod, only : setop_random_kernel_type
-     use log_mod, only : log_event, log_level_error, log_level_info, log_scratch_space
+-    use log_mod, only : log_event, log_level_error, log_level_info, log_scratch_space
++    use log_mod, only : log_event, log_level_error, log_level_info, log_scratch_space, log_level_debug
 +    use planet_config_mod, only : cp
 +    use adjoint_test_parameters_mod, only : ls_exner_range, ls_theta_range, ls_md1_range, ls_md2_range, ls_md3_range
      real(kind=r_def), parameter :: overall_tolerance = 1500.0_r_def
      type(mesh_type), pointer, intent(in) :: mesh
      type(field_type), dimension(3), intent(in), optional :: chi
-@@ -31,32 +34,22 @@
+@@ -31,35 +34,29 @@
      type(field_type) :: ls_exner
      type(field_type) :: ls_theta
      type(field_type), dimension(3) :: ls_moist_dyn_fac
@@ -44,6 +45,10 @@
 -    real(kind=r_def) :: ls_exner_inner_prod
 -    real(kind=r_def) :: ls_theta_inner_prod
 -    real(kind=r_def), dimension(3) :: ls_moist_dyn_fac_inner_prod
++    real(kind=r_def) :: r_u_sf
++    real(kind=r_def) :: exner_sf
++    real(kind=r_def) :: theta_sf
++    real(kind=r_def), dimension(3) :: moist_dyn_fac_sf
      real(kind=r_def) :: inner1
      real(kind=r_def) :: r_u_r_u_input_inner_prod
      real(kind=r_def) :: exner_exner_input_inner_prod
@@ -52,11 +57,14 @@
 -    real(kind=r_def) :: ls_exner_ls_exner_input_inner_prod
 -    real(kind=r_def) :: ls_theta_ls_theta_input_inner_prod
 -    real(kind=r_def), dimension(3) :: ls_moist_dyn_fac_ls_moist_dyn_fac_input_inner_prod
-+    real(kind=r_def), parameter :: r_u_sf = 1.0E-23_r_def
      real(kind=r_def) :: inner2
      real(kind=r_def) :: MachineTol
      real(kind=r_def) :: relative_diff
-@@ -82,91 +75,55 @@
++    real(kind=r_def), parameter :: eps = 1.0e-30_r_def
+ 
+     vector_space_w2_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w2)
+     vector_space_w3_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w3)
+@@ -82,91 +79,80 @@
      call moist_dyn_fac_input(1_i_def)%initialise(vector_space=vector_space_wtheta_ptr, name='moist_dyn_fac_input')
      call moist_dyn_fac_input(2_i_def)%initialise(vector_space=vector_space_wtheta_ptr, name='moist_dyn_fac_input')
      call moist_dyn_fac_input(3_i_def)%initialise(vector_space=vector_space_wtheta_ptr, name='moist_dyn_fac_input')
@@ -105,21 +113,51 @@
 -&x_innerproduct_x(ls_moist_dyn_fac_inner_prod(2_i_def), ls_moist_dyn_fac(2_i_def)), &
 -&x_innerproduct_x(ls_moist_dyn_fac_inner_prod(3_i_def), ls_moist_dyn_fac(3_i_def)))
 +&moist_dyn_fac(2_i_def)), x_innerproduct_x(moist_dyn_fac_inner_prod(3_i_def), moist_dyn_fac(3_i_def)))
++    write( log_scratch_space, * ) "atlt_hydrostatic_alg inner products:"
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "r_u inner product = ", r_u_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "exner inner product = ", exner_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "theta inner product = ", theta_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "moist_dyn_fac inner(1_i_def) product = ", moist_dyn_fac_inner_prod(1_i_def)
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "moist_dyn_fac inner(2_i_def) product = ", moist_dyn_fac_inner_prod(2_i_def)
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "moist_dyn_fac inner(3_i_def) product = ", moist_dyn_fac_inner_prod(3_i_def)
++    call log_event( log_scratch_space, log_level_debug )
++    r_u_sf = 1.0_r_def / (r_u_inner_prod + eps)
++    exner_sf = 1.0_r_def / (exner_inner_prod + eps)
++    theta_sf = 1.0_r_def / (theta_inner_prod + eps)
++    moist_dyn_fac_sf(1_i_def) = 1.0_r_def / (moist_dyn_fac_inner_prod(1_i_def) + eps)
++    moist_dyn_fac_sf(2_i_def) = 1.0_r_def / (moist_dyn_fac_inner_prod(2_i_def) + eps)
++    moist_dyn_fac_sf(3_i_def) = 1.0_r_def / (moist_dyn_fac_inner_prod(3_i_def) + eps)
      inner1 = 0.0_r_def
 -    inner1 = inner1 + cp * cp
 -    inner1 = inner1 + r_u_inner_prod
-+    inner1 = inner1 + r_u_inner_prod*r_u_sf
-     inner1 = inner1 + exner_inner_prod
-     inner1 = inner1 + theta_inner_prod
-     inner1 = inner1 + moist_dyn_fac_inner_prod(1_i_def)
-     inner1 = inner1 + moist_dyn_fac_inner_prod(2_i_def)
-     inner1 = inner1 + moist_dyn_fac_inner_prod(3_i_def)
+-    inner1 = inner1 + exner_inner_prod
+-    inner1 = inner1 + theta_inner_prod
+-    inner1 = inner1 + moist_dyn_fac_inner_prod(1_i_def)
+-    inner1 = inner1 + moist_dyn_fac_inner_prod(2_i_def)
+-    inner1 = inner1 + moist_dyn_fac_inner_prod(3_i_def)
 -    inner1 = inner1 + ls_exner_inner_prod
 -    inner1 = inner1 + ls_theta_inner_prod
 -    inner1 = inner1 + ls_moist_dyn_fac_inner_prod(1_i_def)
 -    inner1 = inner1 + ls_moist_dyn_fac_inner_prod(2_i_def)
 -    inner1 = inner1 + ls_moist_dyn_fac_inner_prod(3_i_def)
-+    call invoke( inc_a_times_X( r_u_sf, r_u ) )
++    inner1 = inner1 + r_u_inner_prod * r_u_sf
++    inner1 = inner1 + exner_inner_prod * exner_sf
++    inner1 = inner1 + theta_inner_prod * theta_sf
++    inner1 = inner1 + moist_dyn_fac_inner_prod(1_i_def) * moist_dyn_fac_sf(1_i_def)
++    inner1 = inner1 + moist_dyn_fac_inner_prod(2_i_def) * moist_dyn_fac_sf(2_i_def)
++    inner1 = inner1 + moist_dyn_fac_inner_prod(3_i_def) * moist_dyn_fac_sf(3_i_def)
++    call invoke( inc_a_times_X( r_u_sf, r_u ),                                       &
++                 inc_a_times_X( exner_sf, exner ),                                   &
++                 inc_a_times_X( theta_sf, theta ),                                   &
++                 inc_a_times_X( moist_dyn_fac_sf(1_i_def), moist_dyn_fac(1_i_def) ), &
++                 inc_a_times_X( moist_dyn_fac_sf(2_i_def), moist_dyn_fac(2_i_def) ), &
++                 inc_a_times_X( moist_dyn_fac_sf(3_i_def), moist_dyn_fac(3_i_def) ) )
      r_u_r_u_input_inner_prod = 0.0_r_def
      exner_exner_input_inner_prod = 0.0_r_def
      theta_theta_input_inner_prod = 0.0_r_def

@@ -1,4 +1,4 @@
-@@ -9,8 +9,8 @@
+@@ -9,13 +9,13 @@
      use mesh_mod, only : mesh_type
      use function_space_collection_mod, only : function_space_collection
      use tl_w3v_advective_update_kernel_mod, only : tl_w3v_advective_update_kernel_type
@@ -8,7 +8,13 @@
      use fs_continuity_mod, only : w2, w3
      use operator_mod, only : operator_type
      use constants_mod, only : i_def, r_def
-@@ -28,61 +28,44 @@
+     use setop_random_kernel_mod, only : setop_random_kernel_type
+-    use log_mod, only : log_event, log_level_error, log_level_info, log_scratch_space
++    use log_mod, only : log_event, log_level_error, log_level_info, log_scratch_space, log_level_debug
+     real(kind=r_def), parameter :: overall_tolerance = 1500.0_r_def
+     type(mesh_type), pointer, intent(in) :: mesh
+     type(field_type), dimension(3), intent(in), optional :: chi
+@@ -28,61 +28,57 @@
      type(field_type) :: wind
      type(operator_type) :: m3_inv
      type(field_type) :: advective_increment_input
@@ -19,6 +25,8 @@
 -    real(kind=r_def) :: tracer_inner_prod
 -    real(kind=r_def) :: ls_wind_inner_prod
      real(kind=r_def) :: wind_inner_prod
++    real(kind=r_def) :: advective_increment_sf
++    real(kind=r_def) :: wind_sf
      real(kind=r_def) :: inner1
      real(kind=r_def) :: advective_increment_advective_increment_input_inner_prod
 -    real(kind=r_def) :: tracer_tracer_input_inner_prod
@@ -27,10 +35,10 @@
      real(kind=r_def) :: inner2
      real(kind=r_def) :: MachineTol
      real(kind=r_def) :: relative_diff
++    real(kind=r_def), parameter :: eps = 1.0e-30_r_def
  
--    vector_space_w2_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w2)
+     vector_space_w2_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w2)
 -    vector_space_w3_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w3)
-+    vector_space_w2_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w2)
 +    vector_space_w3_ptr => function_space_collection % get_fs(mesh, element_order_h, element_order_v, w3, 6, ndata_first = .false.)
      call advective_increment%initialise(vector_space=vector_space_w3_ptr, name='advective_increment')
      call tracer%initialise(vector_space=vector_space_w3_ptr, name='tracer')
@@ -55,11 +63,23 @@
 -&x_innerproduct_x(ls_wind_inner_prod, ls_wind), x_innerproduct_x(wind_inner_prod, wind))
 +&x_innerproduct_x(advective_increment_inner_prod, advective_increment), &
 +&x_innerproduct_x(wind_inner_prod, wind))
++    write( log_scratch_space, * ) "atlt_w3v_advective_update inner products:"
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "advective_increment inner product = ", advective_increment_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "wind inner product = ", wind_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    advective_increment_sf = 1.0_r_def / (advective_increment_inner_prod + eps)
++    wind_sf = 1.0_r_def / (wind_inner_prod + eps)
      inner1 = 0.0_r_def
-     inner1 = inner1 + advective_increment_inner_prod
+-    inner1 = inner1 + advective_increment_inner_prod
 -    inner1 = inner1 + tracer_inner_prod
 -    inner1 = inner1 + ls_wind_inner_prod
-     inner1 = inner1 + wind_inner_prod
+-    inner1 = inner1 + wind_inner_prod
++    inner1 = inner1 + advective_increment_inner_prod * advective_increment_sf
++    inner1 = inner1 + wind_inner_prod * wind_sf
++    call invoke( inc_a_times_X( advective_increment_sf, advective_increment ), &
++                 inc_a_times_X( wind_sf, wind ) )
      advective_increment_advective_increment_input_inner_prod = 0.0_r_def
 -    tracer_tracer_input_inner_prod = 0.0_r_def
 -    ls_wind_ls_wind_input_inner_prod = 0.0_r_def

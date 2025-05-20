@@ -1,4 +1,4 @@
-@@ -9,7 +9,7 @@
+@@ -9,14 +9,14 @@
      use mesh_mod, only : mesh_type
      use function_space_collection_mod, only : function_space_collection
      use tl_kinetic_energy_gradient_kernel_mod, only : tl_kinetic_energy_gradient_kernel_type
@@ -7,7 +7,15 @@
      use finite_element_config_mod, only : element_order_h, element_order_v
      use fs_continuity_mod, only : w0, w2, w3
      use quadrature_xyoz_mod, only : quadrature_xyoz_type
-@@ -27,26 +27,15 @@
+     use constants_mod, only : i_def, r_def
+     use quadrature_rule_gaussian_mod, only : quadrature_rule_gaussian_type
+     use setop_random_kernel_mod, only : setop_random_kernel_type
+-    use log_mod, only : log_event, log_level_error, log_level_info, log_scratch_space
++    use log_mod, only : log_event, log_level_error, log_level_info, log_scratch_space, log_level_debug
+     real(kind=r_def), parameter :: overall_tolerance = 1500.0_r_def
+     type(mesh_type), pointer, intent(in) :: mesh
+     type(field_type), dimension(3), intent(in), optional :: chi
+@@ -27,29 +27,21 @@
      type(field_type) :: r_u
      type(field_type) :: u
      type(field_type) :: ls_u
@@ -25,6 +33,8 @@
 -    real(kind=r_def) :: ls_u_inner_prod
 -    real(kind=r_def), dimension(3) :: chi_3_inner_prod
 -    real(kind=r_def) :: panel_id_1_inner_prod
++    real(kind=r_def) :: r_u_sf
++    real(kind=r_def) :: u_sf
      real(kind=r_def) :: inner1
      real(kind=r_def) :: r_u_r_u_input_inner_prod
      real(kind=r_def) :: u_u_input_inner_prod
@@ -34,7 +44,11 @@
      real(kind=r_def) :: inner2
      real(kind=r_def) :: MachineTol
      real(kind=r_def) :: relative_diff
-@@ -57,63 +46,25 @@
++    real(kind=r_def), parameter :: eps = 1.0e-30_r_def
+ 
+     vector_space_w0_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w0)
+     vector_space_w2_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w2)
+@@ -57,63 +49,35 @@
      call r_u%initialise(vector_space=vector_space_w2_ptr, name='r_u')
      call u%initialise(vector_space=vector_space_w2_ptr, name='u')
      call ls_u%initialise(vector_space=vector_space_w2_ptr, name='ls_u')
@@ -68,14 +82,26 @@
 -&chi_3(3_i_def)), x_innerproduct_x(panel_id_1_inner_prod, panel_id_1))
 +&tl_kinetic_energy_gradient_kernel_type(r_u, u, ls_u, chi, panel_id, qr_xyoz), x_innerproduct_x(r_u_inner_prod, r_u), &
 +&x_innerproduct_x(u_inner_prod, u))
++    write( log_scratch_space, * ) "atlt_kinetic_energy_gradient inner products:"
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "u inner product = ", u_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "r_u inner product = ", r_u_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    u_sf = 1.0_r_def / (u_inner_prod + eps)
++    r_u_sf = 1.0_r_def / (r_u_inner_prod + eps)
      inner1 = 0.0_r_def
-     inner1 = inner1 + r_u_inner_prod
-     inner1 = inner1 + u_inner_prod
+-    inner1 = inner1 + r_u_inner_prod
+-    inner1 = inner1 + u_inner_prod
 -    inner1 = inner1 + ls_u_inner_prod
 -    inner1 = inner1 + chi_3_inner_prod(1_i_def)
 -    inner1 = inner1 + chi_3_inner_prod(2_i_def)
 -    inner1 = inner1 + chi_3_inner_prod(3_i_def)
 -    inner1 = inner1 + panel_id_1_inner_prod
++    inner1 = inner1 + u_inner_prod * u_sf
++    inner1 = inner1 + r_u_inner_prod * r_u_sf
++    call invoke( inc_a_times_X( u_sf, u ), &
++                 inc_a_times_X( r_u_sf, r_u ) )
      r_u_r_u_input_inner_prod = 0.0_r_def
      u_u_input_inner_prod = 0.0_r_def
 -    ls_u_ls_u_input_inner_prod = 0.0_r_def

@@ -1,12 +1,13 @@
-@@ -13,46 +13,44 @@
+@@ -13,46 +13,49 @@
      use finite_element_config_mod, only : element_order_h, element_order_v
      use fs_continuity_mod, only : w2, w3, wtheta
      use operator_mod, only : operator_type
 -    use constants_mod, only : i_def, r_def
 +    use constants_mod, only : i_def, r_def, r_solver
      use setop_random_kernel_mod, only : setop_random_kernel_type
-     use log_mod, only : log_event, log_level_error, log_level_info, log_scratch_space
+-    use log_mod, only : log_event, log_level_error, log_level_info, log_scratch_space
 -    real(kind=r_def), parameter :: overall_tolerance = 1500.0_r_def
++    use log_mod, only : log_event, log_level_error, log_level_info, log_scratch_space, log_level_debug
 +    use operator_mod, only: r_solver_operator_type
 +    use r_solver_field_mod, only: r_solver_field_type
 +    real(kind=r_solver), parameter :: overall_tolerance = 1500.0_r_solver
@@ -52,6 +53,10 @@
      real(kind=r_def) :: pressure_inner_prod
      real(kind=r_def) :: rhs_p_inner_prod
 -    real(kind=r_def) :: inner1
++    real(kind=r_def) :: lhs_sf
++    real(kind=r_def) :: x_sf
++    real(kind=r_def) :: pressure_sf
++    real(kind=r_def) :: rhs_p_sf
 +    real(kind=r_solver) :: inner1
      real(kind=r_def) :: lhs_lhs_input_inner_prod
      real(kind=r_def) :: x_x_input_inner_prod
@@ -64,10 +69,11 @@
 +    real(kind=r_solver) :: inner2
 +    real(kind=r_solver) :: MachineTol
 +    real(kind=r_solver) :: relative_diff
++    real(kind=r_def), parameter :: eps = 1.0e-30_r_def
  
      vector_space_w2_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w2)
      vector_space_w3_ptr => function_space_collection%get_fs(mesh,element_order_h,element_order_v,w3)
-@@ -68,46 +66,40 @@
+@@ -68,46 +71,58 @@
      call m3%initialise(vector_space_w3_ptr, vector_space_w3_ptr)
      call lhs_input%initialise(vector_space=vector_space_w3_ptr, name='lhs_input')
      call x_input%initialise(vector_space=vector_space_w2_ptr, name='x_input')
@@ -100,11 +106,29 @@
 -    inner1 = inner1 + mt_inv_inner_prod
 -    inner1 = inner1 + pressure_inner_prod
 -    inner1 = inner1 + rhs_p_inner_prod
++    write( log_scratch_space, * ) "adjt_opt_apply_variable_hx inner products:"
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "lhs inner product = ", lhs_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "x inner product = ", x_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "pressure inner product = ", pressure_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    write( log_scratch_space, * ) "rhs_p inner product = ", rhs_p_inner_prod
++    call log_event( log_scratch_space, log_level_debug )
++    lhs_sf = 1.0_r_def / (lhs_inner_prod + eps)
++    x_sf = 1.0_r_def / (x_inner_prod + eps)
++    pressure_sf = 1.0_r_def / (pressure_inner_prod + eps)
++    rhs_p_sf = 1.0_r_def / (rhs_p_inner_prod + eps)
 +    inner1 = 0.0_r_solver
-+    inner1 = inner1 + real( lhs_inner_prod, r_solver )
-+    inner1 = inner1 + real( x_inner_prod, r_solver )
-+    inner1 = inner1 + real( pressure_inner_prod, r_solver )
-+    inner1 = inner1 + real( rhs_p_inner_prod, r_solver )
++    inner1 = inner1 + real( lhs_inner_prod * lhs_sf, r_solver )
++    inner1 = inner1 + real( x_inner_prod * x_sf, r_solver )
++    inner1 = inner1 + real( pressure_inner_prod * pressure_sf, r_solver )
++    inner1 = inner1 + real( rhs_p_inner_prod * rhs_p_sf, r_solver )
++    call invoke( inc_a_times_X( lhs_sf, lhs ), &
++                 inc_a_times_X( x_sf, x ),                 &
++                 inc_a_times_X( pressure_sf, pressure ),   &
++                 inc_a_times_X( rhs_p_sf, rhs_p ) )
      lhs_lhs_input_inner_prod = 0.0_r_def
      x_x_input_inner_prod = 0.0_r_def
 -    mt_inv_mt_inv_input_inner_prod = 0.0_r_def
