@@ -13,7 +13,7 @@
 
 export PROJECT_NAME = lfric2lfric
 export PROJECT_DIR_NAME = lfric2lfric
-PROFILE ?= fast-debug
+export PROFILE ?= fast-debug
 
 # Select option for PSyclone transformation. Select "none" for no transformation.
 export PSYCLONE_TRANSFORMATION ?= minimum
@@ -21,6 +21,7 @@ export PSYCLONE_TRANSFORMATION ?= minimum
 export PROJECT_DIR := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
 
 export INTERNAL_DEPENDENCIES = $(CORE_ROOT_DIR)/infrastructure \
+                               $(CORE_ROOT_DIR)/components/coupling \
                                $(CORE_ROOT_DIR)/components/driver \
                                $(CORE_ROOT_DIR)/components/science \
                                $(CORE_ROOT_DIR)/components/inventory \
@@ -174,3 +175,5 @@ clean: ALWAYS
 	$(call MESSAGE,Removing,"$(PROJECT_NAME) binaries")
 	$(Q)-if [ -d bin ] ; then rm -r bin ; fi
 	$(Q)-if [ -d test ] ; then rm -r test ; fi
+
+include build/project.mk

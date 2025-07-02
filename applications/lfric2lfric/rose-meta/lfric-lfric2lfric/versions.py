@@ -329,7 +329,6 @@ class vn21_t4604(MacroUpgrade):
             ["namelist:partitioning", "generate_inner_haloes"],
             ["namelist:partitioning", "generate_inner_halos"],
         )
-
         # Commands From: rose-meta/lfric-lfric2lfric
         """Rename generate_inner_haloes to generate_inner_halos"""
         self.rename_setting(
@@ -342,7 +341,6 @@ class vn21_t4604(MacroUpgrade):
             ["namelist:partitioning(source)", "generate_inner_haloes"],
             ["namelist:partitioning(source)", "generate_inner_halos"],
         )
-
         return config, self.reports
 
 
@@ -375,7 +373,6 @@ class vn21_t208(MacroUpgrade):
                 ["namelist:boundaries", "transport_overwrite_freq"],
                 "'final'",
             )
-
         return config, self.reports
 
 
@@ -388,4 +385,28 @@ class vn21_t255(MacroUpgrade):
     def upgrade(self, config, meta_config=None):
         # Commands From: rose-meta/lfric-gungho
         # Blank Upgrade Macro
+        return config, self.reports
+
+
+class vn21_t458(MacroUpgrade):
+    """Upgrade macro for ticket #458 by Juan M. Castillo."""
+
+    BEFORE_TAG = "vn2.1_t255"
+    AFTER_TAG = "vn2.1_t458"
+
+    def upgrade(self, config, meta_config=None):
+        # Commands From: rose-meta/lfric-lfric2lfric
+        # Commands From: rose-meta/lfric-gungho
+        """
+        Remove coarse_to_fine from namelist lfric2lfric. Add weight_file
+        to namelist lfric2lfric. This takes the default value of
+        'weight_file' unless the lfric2lfric regrid method is used.
+        """
+        self.add_setting(
+            config,
+            ["namelist:lfric2lfric", "weight_file"],
+            "'weight_file'",
+        )
+        self.remove_setting(config, ["namelist:lfric2lfric", "chain_mesh_tags"])
+
         return config, self.reports
