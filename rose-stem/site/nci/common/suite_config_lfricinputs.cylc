@@ -37,12 +37,8 @@
             -l mem=64GB
     {% endif %}
         [[[environment]]]
-    {% if tasks > 2 %}
-        {% set rose_launcher_tasks = tasks - 2 %}
-            ROSE_LAUNCHER_PREOPTS = -n {{rose_launcher_tasks}}
-    {% elif tasks == 2 %}
-            ROSE_LAUNCHER_PREOPTS = -n 1
-    {% endif %}
+            TOTAL_RANKS = {{tasks}}
+            XIOS_SERVER_MODE=False
 {% endfor %}
 
     [[NCI_GADI_RUN_TASKS]]
