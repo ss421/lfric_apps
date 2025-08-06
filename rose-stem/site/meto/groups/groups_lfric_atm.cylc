@@ -221,8 +221,13 @@
         "lfric_atm_ral_ex1a_weekly",
     ],
     "lfric_atm_ex1a_threaded": [
+        "lfric_atm_nwp_gal9_mgnoukca-C48_MG_ex1a_cce_production-64bit",
+        "lfric_atm_nwp_gal9_coarse_aero_threaded-C48_MG_ex1a_cce_production-64bit",
         "lfric_atm_nwp_gal9_mgnoukca-C48_MG_ex1a_cce_fast-debug-64bit",
         "lfric_atm_nwp_gal9_coarse_aero_threaded-C48_MG_ex1a_cce_fast-debug-64bit",
+        "lfric_atm_nwp_gal9_mgnoukca-C48_MG_ex1a_cce_full-debug-64bit",
+        "lfric_atm_nwp_gal9_mgnoukca-C48_MG_ex1a_gnu_fast-debug-64bit",
+        "lfric_atm_nwp_gal9_coarse_aero_threaded-C48_MG_ex1a_gnu_fast-debug-64bit",
     ],
     "lfric_atm_ex1a_io": [
         "lfric_atm_io-C12_ex1a_cce_fast-debug-64bit",

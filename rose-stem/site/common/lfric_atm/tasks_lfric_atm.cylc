@@ -79,7 +79,7 @@
 
 {% elif task_ns.conf_name == "nwp_gal9_mgnoukca-C48_MG" %}
     {% do task_dict.update({
-        "opt_confs": ["no_dust","um_dump","no_diags"],
+        "opt_confs": ["no_dust","um_dump","no_diags","physics_segmentation"],
         "resolution": "C48_MG",
         "DT": 1800,
         "tsteps": 36,
@@ -223,7 +223,7 @@
 {% elif task_ns.conf_name == "nwp_gal9_coarse_aero_threaded-C48_MG" %}
 
     {% do task_dict.update({
-        "opt_confs": ["no_dust","coarse_aero","um_dump"],
+        "opt_confs": ["no_dust","coarse_aero","um_dump","physics_segmentation"],
         "resolution": "C48_MG",
         "DT": 1800,
         "tsteps": 36,

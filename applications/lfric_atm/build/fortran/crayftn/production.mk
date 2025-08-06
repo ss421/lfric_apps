@@ -33,3 +33,4 @@ gravity_wave_drag/%.o: private FFLAGS_RISKY_OPTIMISATION = -O2 -hflex_mp=strict
 %gungho_model_mod.o: private FFLAGS_RISKY_OPTIMISATION = -O0
 %init_aerosol_fields_alg_mod_psy.o: private FFLAGS_RISKY_OPTIMISATION = -O0
 %jules_extra_kernel_mod.o: private FFLAGS_RISKY_OPTIMISATION = -O0
+large_scale_precipitation/%.o: private FFLAGS_SAFE_OPTIMISATION = -O3 -hipa3 -hflex_mp=conservative

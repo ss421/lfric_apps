@@ -34,6 +34,7 @@
 %gungho_model_mod.o: private FFLAGS_SAFE_OPTIMISATION = -O0
 %init_aerosol_fields_alg_mod_psy.o: private FFLAGS_SAFE_OPTIMISATION = -O0
 %jules_extra_kernel_mod.o: private FFLAGS_SAFE_OPTIMISATION = -O0
+large_scale_precipitation/%.o: private FFLAGS_SAFE_OPTIMISATION = -O2 -hfp0 -hflex_mp=strict
 
 # ==========================================================================
 # DEBUG FLAGS
