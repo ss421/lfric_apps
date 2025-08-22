@@ -19,11 +19,14 @@ module lfric2lfric_infrastructure_mod
   use driver_fem_mod,              only: init_fem
   use driver_io_mod,               only: init_io, &
                                          filelist_populator
+  use check_configuration_mod,     only: get_required_stencil_depth
   use extrusion_mod,               only: extrusion_type,         &
                                          uniform_extrusion_type, &
                                          TWOD
   use field_mod,                   only: field_type
   use gungho_extrusion_mod,        only: create_extrusion
+  use sci_geometric_constants_mod, only: get_chi_inventory,     &
+                                         get_panel_id_inventory
   use inventory_by_mesh_mod,       only: inventory_by_mesh_type
   use io_context_mod,              only: callback_clock_arg
   use linked_list_mod,             only: linked_list_type
@@ -98,8 +101,8 @@ contains
     ! Coordinate field
     type(field_type),             pointer :: chi(:)
     type(field_type),             pointer :: panel_id
-    type(inventory_by_mesh_type)          :: chi_inventory
-    type(inventory_by_mesh_type)          :: panel_id_inventory
+    type(inventory_by_mesh_type), pointer :: chi_inventory
+    type(inventory_by_mesh_type), pointer :: panel_id_inventory
 
     !-----------------------
     ! Mesh Pointers
@@ -225,7 +228,7 @@ contains
     !-----------------------------------------------------------------------
     ! 1.2 Create the required meshes
     !-----------------------------------------------------------------------
-    stencil_depth = 1_i_def
+    stencil_depth = get_required_stencil_depth()
     call init_mesh( modeldb%configuration,       &
                     modeldb%mpi%get_comm_rank(), &
                     modeldb%mpi%get_comm_size(), &
@@ -246,6 +249,8 @@ contains
     ! 2.1 Create the FEM function spaces
     !-----------------------------------------------------------------------
     ! Create FEM specifics (function spaces and chi field)
+    chi_inventory => get_chi_inventory()
+    panel_id_inventory => get_panel_id_inventory()
     call init_fem( mesh_collection, chi_inventory, panel_id_inventory )
 
     !-----------------------------------------------------------------------

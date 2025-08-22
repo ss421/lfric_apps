@@ -36,6 +36,7 @@ module lfric2lfric_driver_mod
   use lfric2lfric_config_mod,         only: regrid_method_map,         &
                                             regrid_method_lfric2lfric, &
                                             regrid_method_oasis
+  use lfric2lfric_map_regrid_mod,     only: lfric2lfric_map_regrid
   use lfric2lfric_oasis_regrid_mod,   only: lfric2lfric_oasis_regrid
   use lfric2lfric_no_regrid_mod,      only: lfric2lfric_no_regrid
 
@@ -215,11 +216,7 @@ contains
       ! Regrid source field depending on regrid method
       select case (regrid_method)
         case (regrid_method_map)
-          write(log_scratch_space, '(A)') &
-                              'Regrid method map not implemented yet'
-          call log_event(log_scratch_space, log_level_info)
-
-          call lfric2lfric_no_regrid(field_dst)
+          call lfric2lfric_map_regrid(field_dst, field_src)
 
         case (regrid_method_lfric2lfric)
           write(log_scratch_space, '(A)') &
