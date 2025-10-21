@@ -358,17 +358,40 @@ class vn22_t827(MacroUpgrade):
         return config, self.reports
 
 
-class vn221_t938(MacroUpgrade):
+class vn22_t938(MacroUpgrade):
     """Upgrade macro for ticket #938 by Jon Elsey."""
 
     BEFORE_TAG = "vn2.2_t827"
-    AFTER_TAG = "vn2.2.1_t938"
+    AFTER_TAG = "vn2.2_t938"
 
     def upgrade(self, config, meta_config=None):
         # Commands From: rose-meta/um-aerosol
         # Add setting for ukca_mode_segment_size
         self.add_setting(
             config, ["namelist:aerosol", "ukca_mode_seg_size"], value="4"
+        )
+
+        return config, self.reports
+
+
+class vn22_t903(MacroUpgrade):
+    """Upgrade macro for ticket #903 by James Kent."""
+
+    BEFORE_TAG = "vn2.2_t938"
+    AFTER_TAG = "vn2.2_t903"
+
+    def upgrade(self, config, meta_config=None):
+        # Commands From: rose-meta/lfric-gungho
+        # Add horizontal predictor options to formulation namelist
+        self.add_setting(
+            config,
+            ["namelist:formulation", "horizontal_physics_predictor"],
+            ".false.",
+        )
+        self.add_setting(
+            config,
+            ["namelist:formulation", "horizontal_transport_predictor"],
+            ".false.",
         )
 
         return config, self.reports

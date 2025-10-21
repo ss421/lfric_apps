@@ -108,6 +108,8 @@ contains
             use_wavedynamics=.false.,                                          &
             use_multires_coupling=.false.,                                     &
             si_momentum_equation=.true.,                                       &
+            horizontal_physics_predictor=.false.,                              &
+            horizontal_transport_predictor=.false.,                            &
             vector_invariant=.true.                                            &
     )
     call feign_planet_config(                                                  &

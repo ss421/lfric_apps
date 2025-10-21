@@ -270,6 +270,8 @@ contains
                                   eos_method=eos_method_sampled,            &
                                   init_exner_bt        = .true.,            &
                                   si_momentum_equation=.true.,              &
+                                  horizontal_physics_predictor=.false.,     &
+                                  horizontal_transport_predictor=.false.,   &
                                   vector_invariant=.true.)
 
     call feign_initial_pressure_config( method=method_balanced,             &
@@ -344,6 +346,8 @@ contains
                                   eos_method=eos_method_sampled,             &
                                   init_exner_bt        = .false.,            &
                                   si_momentum_equation=.true.,               &
+                                  horizontal_physics_predictor=.false.,      &
+                                  horizontal_transport_predictor=.false.,    &
                                   vector_invariant=.true.)
 
 

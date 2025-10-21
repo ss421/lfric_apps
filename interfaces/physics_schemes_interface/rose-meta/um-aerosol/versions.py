@@ -30,11 +30,11 @@ class vnXX_txxx(MacroUpgrade):
 """
 
 
-class vn221_t938(MacroUpgrade):
+class vn22_t938(MacroUpgrade):
     """Upgrade macro for ticket #938 by Jon Elsey."""
 
-    BEFORE_TAG = "vn2.2.1"
-    AFTER_TAG = "vn2.2.1_t938"
+    BEFORE_TAG = "vn2.2"
+    AFTER_TAG = "vn2.2_t938"
 
     def upgrade(self, config, meta_config=None):
         # Commands From: rose-meta/um-aerosol
