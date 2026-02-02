@@ -32,8 +32,7 @@
 !> The convention noted above states that we need to include an additional
 !> rule: The adjoint of "falling out of scope" is "initialisation to zero".
 !> This means that in addition to the adjoint data copies, we also need to
-!> include a method to zero the fields. To enable that, two further methods
-!> (zero_lfric and zero_atlas) are included.
+!> include a method to zero the fields.
 !>
 module atlas_field_interface_mod
 
@@ -100,12 +99,6 @@ contains
 
   !> Adjoint of: (Copy atlas field to the LFRic field)
   procedure, public :: copy_to_lfric_ad
-
-  !> Zero the LFRic field
-  procedure, public :: zero_lfric
-
-  !> Zero the Atlas field
-  procedure, public :: zero_atlas
 
   !> Get the LFRic field name
   procedure, public :: get_lfric_name
@@ -550,44 +543,6 @@ subroutine copy_to_lfric_ad( self )
   call field_proxy%set_dirty()
 
 end subroutine copy_to_lfric_ad
-
-!> @brief Zero the LFRic field
-!>
-subroutine zero_lfric( self )
-
-  implicit none
-
-  class( atlas_field_interface_type ), intent(inout) :: self
-
-  type( field_proxy_type )    :: field_proxy
-
-  select type (field_ptr => self%get_lfric_field_ptr())
-  class is (field_type)
-    field_proxy = field_ptr%get_proxy()
-
-    ! Set all data to zero
-    field_proxy%data(:) = 0.0_real64
-  class default
-    call log_event(                                                     &
-      "Unexpected field type in atlas_field_interface_type%zero_lfric", &
-      log_level_error                                                   &
-    )
-  end select  
-
-end subroutine zero_lfric
-
-!> @brief Zero the Atlas field
-!>
-subroutine zero_atlas( self )
-
-  implicit none
-
-  class( atlas_field_interface_type ), intent(inout) :: self
-
-  ! Set owned data to zero
-  self%atlas_data(:,:) = 0.0_real64
-
-end subroutine zero_atlas
 
 !> @brief Returns the lfric name of the field
 !>

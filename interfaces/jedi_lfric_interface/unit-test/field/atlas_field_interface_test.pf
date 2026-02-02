@@ -462,18 +462,6 @@ contains
       end do
     end do
 
-    ! Zero the Atlas field
-    call atlas_field_interface%zero_atlas()
-
-    ! Check Atlas data after zero_atlas
-    @assertTrue( sum(abs(atlas_field(:,:))) == 0.0_real64 )
-
-    ! Zero the LFRic field
-    call atlas_field_interface%zero_lfric()
-
-    ! Check LFRic data after zero_lfric
-    @assertTrue( sum(abs(lfric_field_proxy%data(:))) == 0.0_real64 )
-
   end subroutine zero_field_test_w3_field
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
