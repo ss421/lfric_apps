@@ -1120,11 +1120,9 @@ contains
     type( modeldb_type ), target, intent(inout) :: modeldb
     character(*),                 intent(in)    :: program_name
 
-    type( field_collection_type ), pointer :: diagnostic_fields
     type( field_collection_type ), pointer :: moisture_fields
     type( field_array_type ),      pointer :: mr_array
     type( field_type ),            pointer :: mr(:)
-    type( field_collection_type ), pointer :: fd_fields
     type( field_collection_type ), pointer :: prognostic_fields
 
     type( field_type), pointer :: theta
@@ -1132,24 +1130,22 @@ contains
     type( field_type), pointer :: rho
     type( field_type), pointer :: exner
 
-    nullify(diagnostic_fields, moisture_fields, mr_array, mr, fd_fields, &
-            prognostic_fields, theta, u, rho, exner)
+    nullify(moisture_fields, mr_array, mr, prognostic_fields, &
+            theta, u, rho, exner)
 
     ! Get pointers to field collections for use downstream
     prognostic_fields => modeldb%fields%get_field_collection( &
                                                          "prognostic_fields")
-    diagnostic_fields => modeldb%fields%get_field_collection( &
-                                                         "diagnostic_fields")
     moisture_fields => modeldb%fields%get_field_collection("moisture_fields")
     call moisture_fields%get_field("mr", mr_array)
     mr => mr_array%bundle
-    fd_fields => modeldb%fields%get_field_collection("fd_fields")
 
     ! Get pointers to fields in the prognostic/diagnostic field collections
     ! for use downstream
     call prognostic_fields%get_field('theta', theta)
     call prognostic_fields%get_field('u', u)
     call prognostic_fields%get_field('rho', rho)
+    ! The exner field is not passed to the checksum and it should be. 
     call prognostic_fields%get_field('exner', exner)
 
     ! Write checksums to file
