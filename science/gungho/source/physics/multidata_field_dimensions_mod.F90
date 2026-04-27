@@ -20,6 +20,7 @@ module multidata_field_dimensions_mod
                                             urban,       &
                                             urban_canyon
 #endif
+  use nl_physics_config_mod,              only : use_nl_physics
 
   implicit none
 
@@ -77,6 +78,7 @@ subroutine sync_multidata_field_dimensions()
 #ifdef UM_PHYSICS
       logical(l_def), parameter :: tolerate_missing_axes = .true.
       integer(i_def) :: i
+if (use_nl_physics) then
       do i=1,size(multidata_items)
             call set_axis_dimension(                                          &
                   multidata_items(i),                                         &
@@ -121,7 +123,7 @@ subroutine sync_multidata_field_dimensions()
               1,                                                                &
               tolerate_missing_axes)
       end if
-
+endif! (use_nl_physics) then
 #endif
 end subroutine sync_multidata_field_dimensions
 
@@ -175,9 +177,11 @@ end subroutine sync_multidata_field_dimensions
     character(*), intent(in) :: multidata_item
 
     integer(kind=i_def) :: dim
-
-    select case (multidata_item)
+!!!! BIT of a mess bit I think this should work...
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
+    select case (multidata_item)
+!#ifdef UM_PHYSICS
       case ('plant_func_types')
             dim = npft
       case ('sea_ice_categories')
@@ -275,7 +279,7 @@ end subroutine sync_multidata_field_dimensions
             end if
       case ('')
             dim = 1 ! ordinary (non-multidata) field
-#endif
+!!!!!#endif
       case default
             if (use_xios_io) then
                   ! attempt to get it from XIOS metadata
@@ -287,6 +291,30 @@ end subroutine sync_multidata_field_dimensions
                         call log_event(log_scratch_space, LOG_LEVEL_ERROR)
             end if
     end select
+else! (use_nl_physics) then
+            if (use_xios_io) then
+                  ! attempt to get it from XIOS metadata
+                  dim = get_axis_dimension(multidata_item)
+            else
+                  dim = 1 ! silence compiler warning
+                  write(log_scratch_space, '(A, A)')                          &
+                        'Unexpected multidata item: ', multidata_item
+                        call log_event(log_scratch_space, LOG_LEVEL_ERROR)
+            end if
+endif! (use_nl_physics) then
+
+#else
+            if (use_xios_io) then
+                  ! attempt to get it from XIOS metadata
+                  dim = get_axis_dimension(multidata_item)
+            else
+                  dim = 1 ! silence compiler warning
+                  write(log_scratch_space, '(A, A)')                          &
+                        'Unexpected multidata item: ', multidata_item
+                        call log_event(log_scratch_space, LOG_LEVEL_ERROR)
+            end if
+#endif
+
 
   end function get_multidata_field_dimension
 

@@ -36,51 +36,51 @@
 {% if "config_dump_checker" in task %}
 
         inherit={{inherit.str|upper}}
-        script="rose task-run --app-key=check_config_dump"
+        script="rose task-run -v --app-key=check_config_dump"
 
 {% elif "style_checker" in task %}
 
         inherit={{inherit.str|upper}}
-        script="rose task-run --app-key=check_style"
+        script="rose task-run -v --app-key=check_style"
 
 {% elif "extract_checker" in task %}
 
         inherit={{inherit.str|upper}}
-        script="rose task-run --app-key=extract_list_checker"
+        script="rose task-run -v --app-key=extract_list_checker"
 
 {% elif "site_validator" in task %}
 
         inherit={{inherit.str|upper}}
-        script="rose task-run --app-key=site_validator"
+        script="rose task-run -v --app-key=site_validator"
 
 {% elif "rose-stem_lint_checker" in task %}
 
         inherit={{inherit.str|upper}}
-        script="rose task-run --app-key=rose-stem_lint_check"
+        script="rose task-run -v --app-key=rose-stem_lint_check"
 
 {% elif "test_launch-exe" in task %}
 
         inherit={{inherit.str|upper}}
-        script="rose task-run --app-key=test_launch-exe"
+        script="rose task-run -v --app-key=test_launch-exe"
         [[[environment]]]
             launch_exe_meto_path = $CYLC_WORKFLOW_RUN_DIR/site/meto/common/bin/launch-exe
 
 {% elif "macro_chains_checker" in task %}
 
         inherit=SCRIPTS,{{site_vars["scripts_platform"]|upper}}_PLOT
-        script="rose task-run --app-key=check_macro_chains"
+        script="rose task-run -v --app-key=check_macro_chains"
 
 {% elif "validate_rose_meta" in task %}
 
         inherit={{inherit.str|upper}}
-        script="rose task-run --app-key=validate_rose_meta"
+        script="rose task-run -v --app-key=validate_rose_meta"
         [[[environment]]]
             ROSE_PYTHONPATH = $PYTHONPATH
 
 {% elif "kgo_groups_checker" in task %}
 
         inherit={{inherit.str|upper}}
-        script="rose task-run --app-key=check_kgo_groups"
+        script="rose task-run -v --app-key=check_kgo_groups"
         {% set group_str = RUN_NAMES|join(",") %}
         [[[environment]]]
             SUITE_SITE = {{SITE}}
@@ -89,12 +89,12 @@
 {% elif "global_variables_checker" in task %}
 
         inherit={{inherit.str|upper}}
-        script="rose task-run --app-key=check_global_variables"
+        script="rose task-run -v --app-key=check_global_variables"
 
 {% elif "python_unit_tests" in task %}
 
         inherit={{inherit.str|upper}}
-        script="rose task-run --app-key=python_unit_tests"
+        script="rose task-run -v --app-key=python_unit_tests"
 
 {% elif "local_build_test" in task %}
     {# Test the local_build script by building gungho_model #}

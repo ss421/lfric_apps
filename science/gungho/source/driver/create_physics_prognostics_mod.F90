@@ -123,7 +123,7 @@ module create_physics_prognostics_mod
   use initialization_config_mod,      only : init_option,                       &
                                              init_option_checkpoint_dump
 #endif
-
+  use nl_physics_config_mod,               only : use_nl_physics
 
   implicit none
 
@@ -224,6 +224,8 @@ contains
     end if
 
 #ifdef UM_PHYSICS
+
+if (use_nl_physics) then
     !========================================================================
     ! Fields owned by the radiation scheme
     !========================================================================
@@ -1897,6 +1899,7 @@ contains
           twod=.true., is_int=.true., ckp=checkpoint_flag, empty=is_empty))
     end if
 
+endif! (use_nl_physics) then
 #endif
 
 

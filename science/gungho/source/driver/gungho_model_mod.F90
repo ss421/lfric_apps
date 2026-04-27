@@ -113,6 +113,7 @@ module gungho_model_mod
   use jules_timestep_alg_mod,      only : jules_timestep_type
 #endif
 
+  use nl_physics_config_mod,               only : use_nl_physics
   implicit none
 
   private
@@ -870,6 +871,8 @@ contains
     call create_runtime_constants()
 
 #ifdef UM_PHYSICS
+
+if (use_nl_physics) then
     if ( use_physics ) then
       ! Initialise time-varying trace gases
       call gas_calc_all()
@@ -884,6 +887,7 @@ contains
       ! Initialisation of UM variables related to the mesh
       call um_domain_init(mesh)
     end if
+endif! (use_nl_physics) then
 #endif
 
     if ( perturb_init ) then
@@ -1039,11 +1043,14 @@ contains
         call log_event( log_scratch_space, LOG_LEVEL_WARNING )
 #ifdef UM_PHYSICS
       case( method_jules )  ! jules
+!!! prob not needed...
+if (use_nl_physics) then
         ! Initialise the jules timestep method
         allocate( timestep_method, source=jules_timestep_type(modeldb) )
         ! Add to the model database
         call modeldb%values%add_key_value('timestep_method', &
                       timestep_method)
+endif! (use_nl_physics) then
 #endif
       case default
         call log_event("Gungho: Incorrect time stepping option chosen, "// &

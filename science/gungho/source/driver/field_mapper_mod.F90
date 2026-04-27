@@ -24,6 +24,7 @@ module field_mapper_mod
   use gungho_time_axes_mod,               only : gungho_time_axes_type
   use lfric_xios_time_axis_mod,           only : time_axis_type
 
+  use nl_physics_config_mod,               only : use_nl_physics
   implicit none
 
   private
@@ -223,6 +224,10 @@ contains
     ! Create collection of fields to be advected
 
 #ifdef UM_PHYSICS
+
+  if (use_nl_physics) then
+
+  end if
 #endif
    call gungho_axes%initialise()
 

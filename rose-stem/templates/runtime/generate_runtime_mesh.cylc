@@ -14,7 +14,7 @@
     {% set inherit.str = inherit.str~","~family|upper %}
 {% endfor %}
 
-{% set script_str = "rose task-run --app-key=mesh --opt-conf-key="~task_ns.conf_name %}
+{% set script_str = "rose task-run -v --app-key=mesh --opt-conf-key="~task_ns.conf_name %}
 
     [[{{task}}]]
         inherit={{inherit.str|upper}}

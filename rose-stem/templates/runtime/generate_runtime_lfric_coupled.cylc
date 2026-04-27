@@ -21,7 +21,7 @@
     [[{{task}}]]
     {% endif %}
         inherit=BUILD_{{task_ns.application|upper}}_{{task_ns.platform|upper}},{{task_ns.platform|upper}}_BUILD_COUPLED_CCE
-        script = rose task-run
+        script = rose task-run -v
         [[[environment]]]
             ROSE_TASK_APP = {{task_app}}
         [[[directives]]]
@@ -36,7 +36,7 @@
     [[{{task}}]]
     {% endif %}
         inherit=BUILD_{{task_ns.application|upper}}_{{task_ns.platform|upper}}, {{SITE|upper}}_FCM_MAKE
-        script = rose task-run
+        script = rose task-run -v
         execution time limit = PT10M
         [[[environment]]]
             ROSE_TASK_APP = {{task_app}}

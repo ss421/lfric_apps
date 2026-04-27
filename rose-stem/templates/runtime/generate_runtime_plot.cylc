@@ -20,7 +20,7 @@
 
     [[{{task}}]]
         inherit={{inherit.str|upper}}
-        script = 'rose task-run --app-key=plot'
+        script = 'rose task-run -v --app-key=plot'
         execution time limit = PT{{task_values["tech-tests_wallclock"]}}M
         [[[environment]]]
             NODAL_DATA_DIR = {{task_output_dir}}/results
@@ -41,7 +41,7 @@
 
     [[{{task}}]]
         inherit={{inherit.str|upper}}
-        script = 'rose task-run --app-key=memory_profile'
+        script = 'rose task-run -v --app-key=memory_profile'
         [[[environment]]]
             PLOT_DIR = {{task_output_dir}}/plots
             TASK_LOG_DIR = {{log_dir}}

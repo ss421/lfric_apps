@@ -34,6 +34,7 @@ module create_iau_fields_mod
   use jules_physics_init_mod,        only : snow_lev_tile
 #endif
 
+  use nl_physics_config_mod,               only : use_nl_physics
   implicit none
 
   private
@@ -108,6 +109,8 @@ module create_iau_fields_mod
         read_behaviour=read_behaviour )
 
 #ifdef UM_PHYSICS
+
+if (use_nl_physics) then
     if ( iau_wet_density ) then
       call setup_field( iau_fields, depository, prognostic_fields, &
           "rho_r2_inc", W3, mesh, checkpoint_restart_flag, &
@@ -117,6 +120,7 @@ module create_iau_fields_mod
           "rho_inc", W3, mesh, checkpoint_restart_flag, &
           read_behaviour=read_behaviour )
     end if
+endif! (use_nl_physics) then
 #endif
 
     call setup_field( iau_fields, depository, prognostic_fields, &
@@ -128,6 +132,8 @@ module create_iau_fields_mod
         read_behaviour=read_behaviour )
 
 #ifdef UM_PHYSICS
+
+if (use_nl_physics) then
     ! IAU control-pert pert increment fields
     if ( iau_use_pertinc ) then
       call log_event( 'Create IAU pert fields', LOG_LEVEL_INFO )
@@ -176,6 +182,7 @@ module create_iau_fields_mod
           "exner_pert_inc", W3, mesh, checkpoint_restart_flag, &
           read_behaviour=read_behaviour )
     end if ! ( iau_use_pertinc )
+endif! (use_nl_physics) then
 #endif
 
     if (iau_surf) then
@@ -189,6 +196,8 @@ module create_iau_fields_mod
       read_behaviour => read_field_generic
 
 #ifdef UM_PHYSICS
+
+if (use_nl_physics) then
       call setup_field( iau_surf_fields, depository, prognostic_fields, &
          "soil_temperature_inc", W3, mesh, checkpoint_restart_flag, &
          twod_mesh, read_behaviour=read_behaviour, twod=.true., ndata=sm_levels )
@@ -204,6 +213,7 @@ module create_iau_fields_mod
       call setup_field( iau_surf_fields, depository, prognostic_fields, &
          "tile_temperature_inc", W3, mesh, checkpoint_restart_flag, &
          twod_mesh, read_behaviour=read_behaviour, twod=.true., ndata=n_land_tile )
+endif! (use_nl_physics) then
 #endif
     end if
 
@@ -226,6 +236,8 @@ module create_iau_fields_mod
     nullify( iau_fields, iau_surf_fields )
 
 #ifdef UM_PHYSICS
+
+if (use_nl_physics) then
     ! Set up name of density increments
     if ( iau_wet_density ) then
       rho_inc_name = "rho_r2_inc"
@@ -263,11 +275,13 @@ module create_iau_fields_mod
                                         "q_tot_inc", "qcl_tot_inc",           &
                                         "qcf_tot_inc", "theta_tot_inc",       &
                                         "exner_tot_inc", rho_inc_name )
+endif! (use_nl_physics) then
 #endif
 
    end subroutine create_iau_fields
 
 #ifdef UM_PHYSICS
+!! nothing need here....
   !> @brief   Create additional types of iau increment fields.
   !> @details Create IAU field collection for additional increment
   !>          types associated with additive inflation and the aggregated

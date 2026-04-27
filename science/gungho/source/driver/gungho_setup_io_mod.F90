@@ -164,6 +164,7 @@ module gungho_setup_io_mod
   use iau_config_mod,            only: iau_use_pertinc
 #endif
 
+  use nl_physics_config_mod,               only : use_nl_physics
   implicit none
 
   private
@@ -266,6 +267,8 @@ module gungho_setup_io_mod
     end if
 
 #ifdef UM_PHYSICS
+
+if (use_nl_physics) then
     ! Setup ancillary files
     if( ancil_option == ancil_option_fixed .or. &
         ancil_option == ancil_option_updating ) then
@@ -746,6 +749,7 @@ module gungho_setup_io_mod
                                                          xios_id="int_flux_ancil", &
                                                          io_mode=FILE_MODE_READ ) )
     end if
+endif! (use_nl_physics) then
 #endif
 
     ! Setup orography ancillary file
@@ -773,12 +777,15 @@ module gungho_setup_io_mod
                                                          xios_id="iau", &
                                                          io_mode=FILE_MODE_READ ))
 #ifdef UM_PHYSICS
+
+if (use_nl_physics) then
       ! Setup the IAU pert increments file
       if ( iau_use_pertinc ) then
         call files_list%insert_item( lfric_xios_file_type( trim(iau_pert_path), &
                                                            xios_id="iau_pert",  &
                                                            io_mode=FILE_MODE_READ ))
       end if
+endif! (use_nl_physics) then
 #endif
     end if
 

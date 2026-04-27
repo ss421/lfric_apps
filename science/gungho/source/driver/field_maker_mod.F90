@@ -55,6 +55,7 @@ module field_maker_mod
     get_ndata_val => get_multidata_field_dimension
 #endif
 
+  use nl_physics_config_mod,               only : use_nl_physics
   implicit none
 
   private
@@ -157,7 +158,12 @@ end function has_xios_io
     real(r_second), allocatable :: all_checkpoint_times(:)
 
 #ifdef UM_PHYSICS
+
+  if (use_nl_physics) then
     ndata = get_ndata_val(spec%mult)
+  else
+    ndata = 1
+  end if
 #else
     ndata = 1
 #endif

@@ -44,6 +44,7 @@ module diagnostics_calc_mod
   use sci_geometric_constants_mod,   only: get_coordinates,      &
                                            get_panel_id
 
+  use nl_physics_config_mod,               only : use_nl_physics
   implicit none
   private
   public :: write_divergence_diagnostic, &
@@ -180,7 +181,12 @@ subroutine write_vorticity_diagnostic(u_field, exner, clock)
                    diagnostic_to_be_sampled('init_xi3')
 
 #ifdef UM_PHYSICS
+!!! this is the logic I should use....
+if (use_nl_physics) then
   plev_xi3_flag = init_diag(plev_xi3, 'plev__xi3')
+else
+  plev_xi3_flag = .false.
+endif! (use_nl_physics) then
 #else
   plev_xi3_flag = .false.
 #endif
@@ -201,9 +207,12 @@ subroutine write_vorticity_diagnostic(u_field, exner, clock)
       call project_output( vorticity, projected_field, chi, panel_id, W3 )
 
 #ifdef UM_PHYSICS
+
+if (use_nl_physics) then
       if (plev_xi3_flag) then
         call pres_lev_field_alg(projected_field(3), exner, plev_xi3, xi3_axis)
       end if
+endif! (use_nl_physics) then
 #endif
 
       if (xi_modlev_flag) then
@@ -242,6 +251,7 @@ subroutine write_vorticity_diagnostic(u_field, exner, clock)
 end subroutine write_vorticity_diagnostic
 
 #ifdef UM_PHYSICS
+!! I assume we just dont need to do anything in this case?
 !-------------------------------------------------------------------------------
 !> @brief     Potential vorticity diagnostic processing and output.
 !> @details   Optionally calculate and output both model level and pressure

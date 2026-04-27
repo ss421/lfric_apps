@@ -33,6 +33,7 @@ module physics_constants_mod
   use model_clock_mod,                    only: model_clock_type
   use timing_mod,                         only: start_timing, stop_timing, &
                                                 tik, LPROF
+  use nl_physics_config_mod,              only : use_nl_physics
 
   implicit none
 
@@ -411,6 +412,7 @@ contains
     logical(kind=l_def)                :: constant_exists
     integer(tik)                       :: id
 
+if (use_nl_physics) then
     ! Check inventory is initialised
     if (.not. Pnm_star_inventory%is_initialised()) then
       call Pnm_star_inventory%initialise(name='Pnm_star')
@@ -439,6 +441,7 @@ contains
 
     call Pnm_star_inventory%get_field(local_mesh, Pnm_star)
 
+endif! (use_nl_physics) then
   end function get_Pnm_star
 #endif
 
@@ -456,7 +459,9 @@ contains
     call rdz_w3_inventory%clear()
     call max_diff_wtheta_inventory%clear()
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
     call Pnm_star_inventory%clear()
+endif! (use_nl_physics) then
 #endif
 
   end subroutine final_physics_constants

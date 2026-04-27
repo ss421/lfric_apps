@@ -22,6 +22,7 @@ module iau_time_control_mod
                              iau_mode_instantaneous
 #endif
 
+  use nl_physics_config_mod,               only : use_nl_physics
   implicit none
 
   public  :: calc_iau_ts_end, &
@@ -51,6 +52,8 @@ module iau_time_control_mod
     dt = 0.0_r_def
     timestep_index = 0.0_i_def
 #ifdef UM_PHYSICS
+
+if (use_nl_physics) then
     dt  = real(model_clock%get_seconds_per_step(), r_def)
 
     if ( dt <= 0.0_r_def ) then
@@ -59,6 +62,7 @@ module iau_time_control_mod
     end if
 
     timestep_index = nint( iau_time / dt ) + 1.0_i_def
+endif! (use_nl_physics) then
 #endif
 
   end function calc_iau_ts_num
@@ -82,9 +86,12 @@ module iau_time_control_mod
     iau_ts_num = 0.0_i_def
     iau_ts_end = 0.0_i_def
 #ifdef UM_PHYSICS
+
+if (use_nl_physics) then
     iau_time = iau_window_length
     iau_ts_num = calc_iau_ts_num( model_clock, iau_time )
     iau_ts_end = iau_ts_start + iau_ts_num - 1.0_r_def
+endif! (use_nl_physics) then
 #endif
 
   end function calc_iau_ts_end
@@ -113,6 +120,8 @@ module iau_time_control_mod
     iau_ts_num = 0.0_i_def
     iau_weight = 0.0_r_def
 #ifdef UM_PHYSICS
+
+if (use_nl_physics) then
     if (iau_mode == iau_mode_instantaneous) then
       iau_weight = 1.0_r_def
     else if ( iau_tendency ) then
@@ -122,6 +131,7 @@ module iau_time_control_mod
       iau_ts_num = calc_iau_ts_num( model_clock, iau_time )
       iau_weight = 1.0_r_def / real( iau_ts_num, r_def )
     end if
+endif! (use_nl_physics) then
 #endif
 
   end function calc_iau_weight

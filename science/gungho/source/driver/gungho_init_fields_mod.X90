@@ -134,6 +134,7 @@ module gungho_init_fields_mod
   use section_choice_config_mod,          only : aerosol, aerosol_um
   use dust_transform_kernel_mod,          only: dust_transform_kernel_type
 #endif
+  use nl_physics_config_mod,              only : use_nl_physics
 
   implicit none
 
@@ -506,6 +507,7 @@ subroutine create_model_data( modeldb,      &
                                        modeldb%clock )
 
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
       ! Create FD prognostic fields
       select case ( prognostic_init_choice )
         case ( init_option_fd_start_dump )
@@ -528,6 +530,7 @@ subroutine create_model_data( modeldb,      &
                                            ancil_fields, &
                                            mesh, twod_mesh )
       end select
+endif! (use_nl_physics) then
 #endif
     end if
 
@@ -732,6 +735,7 @@ subroutine create_model_data( modeldb,      &
                                       fd_fields )
           ! Transform UM 2-bin dust to UKCA LFRIC 2-mode dust
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
           if ( aerosol == aerosol_um .and. &
                glomap_mode == glomap_mode_dust_and_clim ) then
 
@@ -756,6 +760,7 @@ subroutine create_model_data( modeldb,      &
             call depository%remove_field("dust2_mmr")
 
           end if
+endif! (use_nl_physics) then
 #endif
         else
           call log_event("Gungho: Prognostic initialisation from an FD dump not valid "// &
@@ -832,6 +837,7 @@ subroutine create_model_data( modeldb,      &
                                   derived_fields)
 
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
       ! Initialise Casim numbers if they aren't coming from an LFRic dump
       if (microphysics_casim .and. &
            ( prognostic_init_choice /= init_option_checkpoint_dump ) ) then
@@ -842,6 +848,7 @@ subroutine create_model_data( modeldb,      &
                                  convection_fields,                        &
                                  initialise=.true.)
       end if
+endif! (use_nl_physics) then
 #endif
 
       ! Initialise ancillary fields
@@ -849,6 +856,8 @@ subroutine create_model_data( modeldb,      &
         case ( ancil_option_none )
           call log_event( "Gungho: No ancillaries to be read for this run.", LOG_LEVEL_INFO )
 #ifdef UM_PHYSICS
+!!! Im going to assume these options are just not called....
+!!! cant really uise: if (use_nl_physics) then ...
         case ( ancil_option_start_dump )
           call log_event( "Gungho: Ancillaries are being read from start dump ", LOG_LEVEL_INFO )
           ! Update the tiled surface temperature with the calculated tstar
@@ -991,6 +1000,7 @@ subroutine create_model_data( modeldb,      &
         ranseed(1:random_seed_size) = 0
 
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
         if ( .not. checkpoint_read .or. use_random_parameters ) then
           if ( use_spt .or. use_skeb .or. use_random_parameters ) then
             ! Random seed will depend on ensemble member number
@@ -1007,6 +1017,7 @@ subroutine create_model_data( modeldb,      &
             call stph_rp_init_alg( modeldb )
           end if
         end if
+endif! (use_nl_physics) then
 #endif
         if ( checkpoint_read ) then
           ! Read the checkpointed random seed
@@ -1040,11 +1051,13 @@ subroutine create_model_data( modeldb,      &
       field_collection_ptr => modeldb%fields%get_field_collection("iau_fields")
       call read_state( field_collection_ptr )
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
       if ( iau_use_pertinc ) then
         call log_event( 'IAU: read pertinc file in initialise', LOG_LEVEL_INFO )
         field_collection_ptr => modeldb%fields%get_field_collection("iau_pert_fields")
         call read_state( field_collection_ptr )
       end if
+endif! (use_nl_physics) then
 #endif
     end if
 
@@ -1242,10 +1255,12 @@ subroutine create_model_data( modeldb,      &
       end if
 
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
       if ( iau_use_pertinc ) then
         field_collection_ptr => modeldb%fields%get_field_collection("iau_pert_fields")
         call field_collection_ptr%clear()
       end if
+endif! (use_nl_physics) then
 #endif
 
       lbc_fields => modeldb%fields%get_field_collection("lbc_fields")

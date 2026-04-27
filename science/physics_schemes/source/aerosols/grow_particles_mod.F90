@@ -255,7 +255,7 @@ if ( ( aerosol_type  ==  ip_accum_sulphate )  .or.                             &
   ! linear growth as saturation is approached; in any case, at
   ! such high humidities the impact of aerosol will be swamped
   ! by the effect of cloud.
-  humidity_eff = min (humidity, 0.995)
+  humidity_eff = min (humidity, real(0.995, kind=real_umphys))
 
   ! Initialise to default values of alpha and beta (1.0 means that
   ! there is no growth, which will be the case for humidities
@@ -374,7 +374,7 @@ else if ( ( aerosol_type == ip_biomass_1  ) .or.  &  ! biomass fresh
           ( aerosol_type == ip_ocff_aged  ) ) then
 
   ! Not using Fitzgerald: cap humidity to max value of 100%
-  humidity_eff = min (humidity, 1.0)
+  humidity_eff = min (humidity, real(1.0, kind=real_umphys))
 
   ! Verify that 0.0 <= humidity_eff <= 1.0.
   if ( humidity_eff < 0.0 .or. humidity_eff > 1.0) then
@@ -408,7 +408,7 @@ else if ( ( aerosol_type == ip_biomass_1  ) .or.  &  ! biomass fresh
 else if ( aerosol_type == ip_biogenic ) then
 
   ! Not using Fitzgerald: cap humidity to max value of 100%
-  humidity_eff = min (humidity, 1.0)
+  humidity_eff = min (humidity, real(1.0, kind=real_umphys))
 
   ! Verify that 0.0 <= humidity_eff <= 1.0.
   if ( humidity_eff < 0.0 .or. humidity_eff > 1.0) then

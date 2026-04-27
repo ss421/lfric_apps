@@ -15,9 +15,9 @@
         inherit = GENERATE_WEIGHTS, \
                   {{site_vars["scripts_platform"]|upper}}_WEIGHTS
 {% if task_ns.application == "lfric2lfric" %}
-        script = rose task-run --app-key=generate_weights -O lfric2lfric
+        script = rose task-run -v --app-key=generate_weights -O lfric2lfric
 {% else %}
-        script = rose task-run --app-key=generate_weights
+        script = rose task-run -v --app-key=generate_weights
 {% endif %}
         [[[environment]]]
             MPIRUN_N_JOBS = {{task_values["gen_weights_tasks"]}}

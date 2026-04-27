@@ -49,6 +49,7 @@ module time_dimensions_mod
   use chemistry_config_mod,      only: chem_scheme, chem_scheme_strattrop,    &
                                        chem_scheme_strat_test
 #endif
+  use nl_physics_config_mod,               only : use_nl_physics
   implicit none
 
   private
@@ -189,12 +190,15 @@ module time_dimensions_mod
     integer(i_def) :: tdim
     tdim = 0
 #ifdef UM_PHYSICS
+
+if (use_nl_physics) then
     if(ancil_option == ancil_option_fixed .or.                                &
        ancil_option == ancil_option_updating ) then
 
         if (.not. get_ancil_dim(ancil_dir, sst_ancil_path, tdim)) return
 
     end if
+endif! (use_nl_physics) then
 #endif
   end function get_reynolds_dim
 
@@ -209,6 +213,8 @@ module time_dimensions_mod
     integer(i_def) :: tdim
     tdim = 0
 #ifdef UM_PHYSICS
+
+if (use_nl_physics) then
     ! conditions and list of emiss files from gungho_setup_io_mod;
     ! to be safe, we try them all in sequence
     if (glomap_mode == glomap_mode_ukca   .and.                               &
@@ -226,6 +232,7 @@ module time_dimensions_mod
       if (get_ancil_dim(ancil_dir, emiss_so2_high_ancil_path, tdim)) return
 
     end if
+endif! (use_nl_physics) then
 #endif
   end function get_emiss_dim
 

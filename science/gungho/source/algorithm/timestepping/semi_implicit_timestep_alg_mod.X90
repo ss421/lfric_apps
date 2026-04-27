@@ -148,6 +148,7 @@ module semi_implicit_timestep_alg_mod
 
   use timing_mod,                 only: start_timing, stop_timing, tik, LPROF
   use ageofair_alg_mod,           only: ageofair_update
+  use nl_physics_config_mod,      only : use_nl_physics
 
   implicit none
 
@@ -1091,6 +1092,7 @@ contains
     ! changes are applied from the solver.
     ! ----------------------------------------------------------------------
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
     if (use_physics .and. cloud == cloud_um  ) then
       call cld_alg( self%dtheta_cld, mr,                                     &
                     self%state(igh_t), self%state(igh_p), self%state(igh_d), &
@@ -1105,6 +1107,7 @@ contains
                                  convection_fields, initialise=.false. )
       end if ! microphysics_casim
     end if
+endif! (use_nl_physics) then
 #endif
 
     ! Update derived variables for time level n+1
@@ -1121,6 +1124,7 @@ contains
     ! Call UKCA for GLOMAP-mode prognostic aerosol updates
     !--------------------------------------------------------------------
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
     if ( aerosol == aerosol_um .and.            &
          ( glomap_mode == glomap_mode_ukca .or. &
            glomap_mode == glomap_mode_dust_and_clim ) ) then
@@ -1131,6 +1135,7 @@ contains
                               surface_fields, soil_fields,               &
                               self%state, mr, model_clock )
     end if
+endif! (use_nl_physics) then
 #endif
 
     ! Write diagnostic output

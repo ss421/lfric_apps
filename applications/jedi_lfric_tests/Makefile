@@ -26,6 +26,10 @@ export INTERNAL_DEPENDENCIES = $(CORE_ROOT_DIR)/infrastructure \
                                $(CORE_ROOT_DIR)/components/inventory \
                                $(APPS_ROOT_DIR)/interfaces/jedi_lfric_interface \
                                $(CORE_ROOT_DIR)/components/lfric-xios \
+							   $(APPS_ROOT_DIR)/science/shared \
+							   $(APPS_ROOT_DIR)/interfaces/socrates_interface \
+							   $(APPS_ROOT_DIR)/interfaces/jules_interface \
+							   $(APPS_ROOT_DIR)/interfaces/physics_schemes_interface \
                                $(APPS_ROOT_DIR)/science/gungho \
                                $(APPS_ROOT_DIR)/science/linear \
                                $(APPS_ROOT_DIR)/science/adjoint
@@ -52,6 +56,11 @@ documentation doc docs: document-uml document-latex document-api
 include $(CORE_ROOT_DIR)/infrastructure/build/lfric.mk
 include $(INTERNAL_DEPENDENCIES:=/build/import.mk)
 -include $(PROJECT_DIR)/build/project.mk
+
+# Include transmute list only if not using minimum or no transformations
+ifeq ($(filter "$(PSYCLONE_TRANSFORMATION)", "none" "minimum"),)
+  include build/psyclone_transmute_file_list.mk
+endif
 
 ##############################################################################
 # Documentation
@@ -103,7 +112,7 @@ build: export WORKING_DIR := $(WORKING_DIR)/jedi_lfric_tests
 
 build: export LDFLAGS_GROUPS = OPENMP
 ifeq "$(PROFILE)" "full-debug"
-build: export FFLAG_GROUPS = OPENMP DEBUG WARNINGS INIT RUNTIME NO_OPTIMISATION FORTRAN_STANDARD
+build: export FFLAG_GROUPS = OPENMP DEBUG WARNINGS INIT RUNTIME NO_OPTIMISATION
 else ifeq "$(PROFILE)" "fast-debug"
 build: export FFLAG_GROUPS = OPENMP DEBUG WARNINGS SAFE_OPTIMISATION FORTRAN_STANDARD
 else ifeq "$(PROFILE)" "production"
@@ -117,6 +126,10 @@ build: ALWAYS
 	$(call MESSAGE,========================================)
 	$(Q)for SUBPROJECT in $(INTERNAL_DEPENDENCIES) ; do \
 	    $(MAKE) $(QUIET_ARG) -f $$SUBPROJECT/build/import.mk ; done
+	$(call MESSAGE,========================================)
+	$(call MESSAGE,Extracting UM physics)
+	$(call MESSAGE,========================================)
+	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/build/extract/extract_physics.mk
 	$(call MESSAGE,========================================)
 	$(call MESSAGE,Extracting $(PROJECT_NAME))
 	$(call MESSAGE,========================================)
@@ -132,11 +145,48 @@ build: ALWAYS
 	          WORKING_DIR=$(WORKING_DIR) \
 	          META_FILE_DIR=$(META_FILE_DIR)
 	$(call MESSAGE,========================================)
+	$(call MESSAGE,PSycloning interface components)
+	$(call MESSAGE,========================================)
+	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/psyclone/psyclone_psykal.mk \
+	          SOURCE_DIR=$(APPS_ROOT_DIR)/interfaces/jules_interface/source \
+	          OPTIMISATION_PATH=$(OPTIMISATION_PATH)
+	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/psyclone/psyclone_psykal.mk \
+	          SOURCE_DIR=$(APPS_ROOT_DIR)/interfaces/socrates_interface/source \
+	          OPTIMISATION_PATH=$(OPTIMISATION_PATH)
+	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/psyclone/psyclone_psykal.mk \
+	          SOURCE_DIR=$(APPS_ROOT_DIR)/interfaces/physics_schemes_interface/source \
+	          OPTIMISATION_PATH=$(OPTIMISATION_PATH)
+	$(call MESSAGE,========================================)
+	$(call MESSAGE,PSycloning Gungho dynamical core)
+	$(call MESSAGE,========================================)
+	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/psyclone/psyclone_psykal.mk \
+	          SOURCE_DIR=$(APPS_ROOT_DIR)/science/gungho/source \
+	          OPTIMISATION_PATH=$(OPTIMISATION_PATH)
+	$(call MESSAGE,========================================)
 	$(call MESSAGE,PSycloning $(PROJECT_NAME))
 	$(call MESSAGE,========================================)
 	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/psyclone/psyclone_psykal.mk \
 	          SOURCE_DIR=source \
 	          OPTIMISATION_PATH=$(OPTIMISATION_PATH)
+	$(call MESSAGE,========================================)
+	$(call MESSAGE,Preprocess and PSyclone Transmute)
+	$(call MESSAGE,========================================)
+	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/interfaces/physics_schemes_interface/build/pre_process_phys.mk \
+              SOURCE_DIR=$(WORKING_DIR) \
+              PSYCLONE_PHYSICS_FILES="$(PSYCLONE_PHYSICS_FILES)" \
+	          PSYCLONE_DIRECTORIES="$(PSYCLONE_DIRECTORIES)" \
+	          PSYCLONE_PHYSICS_EXCEPTION="$(PSYCLONE_PHYSICS_EXCEPTION)"
+	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/interfaces/physics_schemes_interface/build/psyclone_transmute_pass.mk \
+	          SOURCE_DIR=$(WORKING_DIR) \
+	          OPTIMISATION_PATH_PSY=$(APPS_ROOT_DIR)/applications/$(PROJECT)/$(OPTIMISATION_PATH) \
+	          PSYCLONE_PASS_NO_SCRIPT="$(PSYCLONE_PASS_NO_SCRIPT)"
+	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/interfaces/physics_schemes_interface/build/psyclone_transmute.mk \
+	          SOURCE_DIR=$(WORKING_DIR) \
+	          OPTIMISATION_PATH_PSY=$(APPS_ROOT_DIR)/applications/$(PROJECT)/$(OPTIMISATION_PATH) \
+	          PSYCLONE_PHYSICS_FILES="$(PSYCLONE_PHYSICS_FILES)" \
+	          PSYCLONE_PASS_NO_SCRIPT="$(PSYCLONE_PASS_NO_SCRIPT)" \
+	          PSYCLONE_DIRECTORIES="$(PSYCLONE_DIRECTORIES)" \
+	          PSYCLONE_PHYSICS_EXCEPTION="$(PSYCLONE_PHYSICS_EXCEPTION)"
 	$(call MESSAGE,=========================================================)
 	$(call MESSAGE,Analysing $(PROJECT) build dependencies)
 	$(call MESSAGE,=========================================================)

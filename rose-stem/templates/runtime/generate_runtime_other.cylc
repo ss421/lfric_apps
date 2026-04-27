@@ -29,7 +29,7 @@
 
     [[{{task}}]]
         inherit={{inherit.str|upper}}
-        script = rose task-run --app-key=perftools_export
+        script = rose task-run -v --app-key=perftools_export
         execution time limit = PT{{task_values["tech-tests_wallclock"]}}M
         [[[environment]]]
             PREVIOUS_JOB={{previous_job}}
