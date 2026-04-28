@@ -36,6 +36,8 @@ program jedi_forecast
   use jedi_model_mod,                only : jedi_model_type
   use jedi_post_processor_empty_mod, only : jedi_post_processor_empty_type
 
+  use nl_physics_config_mod, only: use_nl_physics
+
   implicit none
 
   ! Emulator objects
@@ -55,6 +57,9 @@ program jedi_forecast
   type( field_collection_type ), pointer    :: depository => null()
 
   character(*), parameter :: program_name = "jedi_forecast"
+
+  ! Set use_nl_physics=true to avoid the hacked-out code
+  use_nl_physics = .true.
 
   ! Infrastructure config
   call parse_command_line( filename )
