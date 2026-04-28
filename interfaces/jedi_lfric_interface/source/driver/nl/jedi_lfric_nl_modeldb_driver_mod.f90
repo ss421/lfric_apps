@@ -139,7 +139,7 @@ contains
     type(modeldb_type), intent(inout) :: modeldb
 
     call log_event( 'Finalising linear model modeldb', LOG_LEVEL_TRACE )
-
+!!! Im not sure why I dont just call gungho_driver_mod: finalise here?
     ! Model configuration finalisation
     call finalise_model( modeldb )
 

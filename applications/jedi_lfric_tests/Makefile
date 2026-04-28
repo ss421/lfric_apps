@@ -127,6 +127,16 @@ build: ALWAYS
 	$(Q)for SUBPROJECT in $(INTERNAL_DEPENDENCIES) ; do \
 	    $(MAKE) $(QUIET_ARG) -f $$SUBPROJECT/build/import.mk ; done
 	$(call MESSAGE,========================================)
+	$(call MESSAGE,Extracting coupled_interface component)
+	$(call MESSAGE,========================================)
+	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/extract.mk \
+	          SOURCE_DIR=$(APPS_ROOT_DIR)/interfaces/coupled_interface/source
+	$(call MESSAGE,========================================)
+	$(call MESSAGE,Extracting Gungho dynamical core)
+	$(call MESSAGE,========================================)
+	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/extract.mk \
+	          SOURCE_DIR=$(APPS_ROOT_DIR)/science/gungho/source
+	$(call MESSAGE,========================================)
 	$(call MESSAGE,Extracting UM physics)
 	$(call MESSAGE,========================================)
 	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/build/extract/extract_physics.mk
@@ -140,13 +150,14 @@ build: ALWAYS
 	$(call MESSAGE,Generating $(PROJECT) namelist loaders)
 	$(call MESSAGE,=========================================================)
 	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/configuration.mk \
-	          PROJECT=$(PROJECT) \
-	          SOURCE_DIR=source \
-	          WORKING_DIR=$(WORKING_DIR) \
+	          SOURCE_DIR=$(APPS_ROOT_DIR)/science/gungho/source \
 	          META_FILE_DIR=$(META_FILE_DIR)
 	$(call MESSAGE,========================================)
 	$(call MESSAGE,PSycloning interface components)
 	$(call MESSAGE,========================================)
+	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/psyclone/psyclone_psykal.mk \
+	          SOURCE_DIR=$(APPS_ROOT_DIR)/interfaces/coupled_interface/source \
+	          OPTIMISATION_PATH=$(OPTIMISATION_PATH)
 	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/psyclone/psyclone_psykal.mk \
 	          SOURCE_DIR=$(APPS_ROOT_DIR)/interfaces/jules_interface/source \
 	          OPTIMISATION_PATH=$(OPTIMISATION_PATH)
