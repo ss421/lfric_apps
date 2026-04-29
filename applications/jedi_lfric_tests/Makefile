@@ -20,6 +20,7 @@ export PSYCLONE_TRANSFORMATION ?= minimum
 
 export PROJECT_DIR := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
 
+# Note - socrates_interface must come before jules_interface as there are dependencies on each other.
 export INTERNAL_DEPENDENCIES = $(CORE_ROOT_DIR)/infrastructure \
                                $(CORE_ROOT_DIR)/components/driver \
                                $(CORE_ROOT_DIR)/components/science \
@@ -55,7 +56,7 @@ documentation doc docs: document-uml document-latex document-api
 
 include $(CORE_ROOT_DIR)/infrastructure/build/lfric.mk
 include $(INTERNAL_DEPENDENCIES:=/build/import.mk)
--include $(PROJECT_DIR)/build/project.mk
+include build/project.mk
 
 # Include transmute list only if not using minimum or no transformations
 ifeq ($(filter "$(PSYCLONE_TRANSFORMATION)", "none" "minimum"),)
@@ -106,7 +107,7 @@ build: export BIN_DIR     ?= $(PROJECT_DIR)/bin
 build: export LIB_DIR     ?= $(PROJECT_DIR)/lib
 build: export MOD_DIR     ?= $(PROJECT_DIR)/mod
 build: export CXX_LINK     = TRUE
-build: export PROGRAMS    := $(basename $(notdir $(shell find source -maxdepth 1 -name '*.[Ff]90' -print)))
+build: export PROGRAMS    := $(basename $(notdir $(shell find source -maxdepth 1 -name '*.[Ff]90' -exec egrep -l "^\s*program" {} \;)))
 build: export PROJECT      = $(PROJECT_NAME)
 build: export WORKING_DIR := $(WORKING_DIR)/jedi_lfric_tests
 
@@ -238,6 +239,11 @@ unit-tests/%: export TEST_DIR = unit-test
 unit-tests/%: export WORKING_DIR := $(WORKING_DIR)/unit-test
 unit-tests: unit-tests/run
 
+##############################################################################
+# Integration tests
+#
+integration-tests:
+	$(call MESSAGE,Testing,"There are no integration tests.")
 
 ##############################################################################
 # Clean
