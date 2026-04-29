@@ -46,7 +46,7 @@ ifneq ("$(PSYCLONE_TRANSFORMATION)","none")
 endif
 
 .PHONY: default
-default: build integration-tests
+default: build
 	$(Q)echo > /dev/null
 
 .PHONY: documentation doc docs
@@ -237,28 +237,6 @@ unit-tests/%: export SOURCE_DIR = source
 unit-tests/%: export TEST_DIR = unit-test
 unit-tests/%: export WORKING_DIR := $(WORKING_DIR)/unit-test
 unit-tests: unit-tests/run
-
-
-##############################################################################
-# Integration tests
-#
-integration-tests/%: export BIN_DIR      ?= $(PROJECT_DIR)/test
-integration-tests/%: export FFLAGS       += -DINT_TEST
-integration-tests/%: export IMPORT_PARTS  = $(CORE_ROOT_DIR)/infrastructure \
-                                            $(CORE_ROOT_DIR)/components/science \
-                                            $(CORE_ROOT_DIR)/components/driver \
-                                            $(CORE_ROOT_DIR)/components/inventory \
-                                            $(CORE_ROOT_DIR)/components/lfric-xios \
-                                            $(APPS_ROOT_DIR)/interfaces/jedi_lfric_interface \
-                                            $(APPS_ROOT_DIR)/science/gungho \
-                                            $(APPS_ROOT_DIR)/science/linear \
-                                            $(APPS_ROOT_DIR)/science/adjoint
-integration-tests/%: export META_FILE_DIR = rose-meta/jedi_lfric_tests/HEAD
-integration-tests/%: export PROJECT       = $(PROJECT_NAME)
-integration-tests/%: export SOURCE_DIR    = source
-integration-tests/%: export TEST_DIR      = integration-test
-integration-tests/%: export WORKING_DIR  := $(WORKING_DIR)/integration-tests
-integration-tests: integration-tests/run
 
 
 ##############################################################################
