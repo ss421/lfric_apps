@@ -66,6 +66,7 @@ implicit none
 ! Sets y(i) to the exponential function of x(i), for i=1,..,n
 integer :: n
 real (kind=real_64) :: y(n), x(n)
+integer (kind=integer_32) :: l_n
 integer :: i
 
 #if defined(MKL_EXP_V)
@@ -74,7 +75,8 @@ include 'mkl_vml.f90'
 #endif
 
 #if defined(VMASS)
-call vexp (y, x, int(n, kind=integer_32))
+l_n=n
+call vexp (y, x, l_n)
 #elif defined(MKL_EXP_V)
 call vdexp(n, x, y)
 #else
@@ -91,6 +93,7 @@ implicit none
 ! Sets y(i) to the exponential function of x(i), for i=1,..,n
 integer :: n
 real (kind=real_32) :: y(n), x(n)
+integer (kind=integer_32) :: l_n
 integer :: i
 
 #if defined(MKL_EXP_V)
@@ -99,7 +102,8 @@ include 'mkl_vml.f90'
 #endif
 
 #if defined(VMASS)
-call vsexp (y, x, int(n, kind=integer_32))
+l_n=n
+call vsexp (y, x, l_n)
 #elif defined(MKL_EXP_V)
 call vsexp(n, x, y)
 #else
@@ -117,10 +121,8 @@ use um_types, only: real_64,integer_32
 implicit none
 ! Sets z(i) to x(i) raised to the power power, for i=1,..,n
 integer :: n, i
-real (kind=real_64) :: z(n), x(n), power
-#if defined(VMASS)
-real (kind=real_64) :: y(n)
-#endif
+real (kind=real_64) :: z(n), x(n), y(n), power
+integer (kind=integer_32) :: l_n
 
 #if defined(MKL_POWR_V)
   ! Interfaces for MKL
@@ -128,10 +130,11 @@ include 'mkl_vml.f90'
 #endif
 
 #if defined(VMASS)
+l_n=n
 do i=1, n
   y(i)=power
 end do
-call vpow (z, x, y, int(n, kind=integer_32))
+call vpow (z, x, y, l_n)
 #elif defined(MKL_POWR_V)
 call vdpowx(n, x, power, z)
 #else
@@ -147,10 +150,8 @@ use um_types, only: real_32,integer_32
 implicit none
 ! Sets z(i) to x(i) raised to the power power, for i=1,..,n
 integer :: n, i
-real (kind=real_32) :: z(n), x(n), power
-#if defined(VMASS)
-real (kind=real_32) :: y(n)
-#endif
+real (kind=real_32) :: z(n), x(n), y(n), power
+integer (kind=integer_32) :: l_n
 
 #if defined(MKL_POWR_V)
   ! Interfaces for MKL
@@ -158,10 +159,11 @@ include 'mkl_vml.f90'
 #endif
 
 #if defined(VMASS)
+l_n=n
 do i=1, n
   y(i)=power
 end do
-call vspow (z, x, y, int(n, kind=integer_32))
+call vspow (z, x, y, l_n)
 #elif defined(MKL_POWR_V)
 call vspowx(n, x, power, z)
 #else
@@ -187,6 +189,7 @@ implicit none
 
 integer :: n
 real (kind=real_64) :: z(n), x(n), y(n)
+integer (kind=integer_32) :: l_n
 integer :: i
 
 #if defined(MKL_RTOR_V)
@@ -196,7 +199,8 @@ include 'mkl_vml.f90'
 
 #if defined(VMASS)
 
-call vpow (z, x, y, int(n, kind=integer_32))
+l_n=n
+call vpow (z, x, y, l_n)
 
 #elif defined(MKL_RTOR_V)
 
@@ -223,6 +227,7 @@ implicit none
 
 integer :: n
 real (kind=real_64) :: x(n), y(n)
+integer (kind=integer_32) :: l_n
 integer :: i
 
 #if defined(MKL_SQRT_V)
@@ -232,7 +237,8 @@ include 'mkl_vml.f90'
 
 #if defined(VMASS)
 
-call vsqrt (y, x, int(n, kind=integer_32))
+l_n=n
+call vsqrt (y, x, l_n)
 
 #elif defined(MKL_SQRT_V)
 
@@ -257,10 +263,12 @@ implicit none
 ! Sets y(i) to the reciprocal of x(i), for i=1,..,n
 integer :: n
 real (kind=real_64) :: x(n), y(n)
+integer (kind=integer_32) :: l_n
 integer :: i
 
 #if defined(VMASS)
-call vrec (y, x, int(n, kind=integer_32))
+l_n=n
+call vrec (y, x, l_n)
 #else
 do i=1, n
   y(i) = 1/x(i)
@@ -275,10 +283,12 @@ implicit none
 ! Sets y(i) to the reciprocal of x(i), for i=1,..,n
 integer :: n
 real (kind=real_32) :: x(n), y(n)
+integer (kind=integer_32) :: l_n
 integer :: i
 
 #if defined(VMASS)
-call vsrec (y, x, int(n, kind=integer_32))
+l_n=n
+call vsrec (y, x, l_n)
 #else
 do i=1, n
   y(i) = 1/x(i)
@@ -297,6 +307,7 @@ implicit none
 
 integer :: n
 real (kind=real_64) :: x(n), y(n)
+integer (kind=integer_32) :: l_n
 integer :: i
 
 #if defined(MKL_LOG_V)
@@ -306,7 +317,8 @@ include 'mkl_vml.f90'
 
 #if defined(VMASS)
 
-call vlog (y, x, int(n, kind=integer_32))
+l_n=n
+call vlog (y, x, l_n)
 
 #elif defined(MKL_LOG_V)
 
@@ -333,6 +345,7 @@ implicit none
 
 integer :: n
 real (kind=real_64) :: y(n), x(n)
+integer (kind=integer_32) :: l_n
 integer :: i
 
 #if defined(MKL_SIN_V)
@@ -342,7 +355,8 @@ include 'mkl_vml.f90'
 
 #if defined(VMASS)
 
-call vsin (y, x, int(n, kind=integer_32))
+l_n=n
+call vsin (y, x, l_n)
 
 #elif defined(MKL_SIN_V)
 
@@ -369,6 +383,7 @@ implicit none
 
 integer :: n
 real (kind=real_64) :: y(n), x(n)
+integer (kind=integer_32) :: l_n
 integer :: i
 
 #if defined(MKL_COS_V)
@@ -378,7 +393,8 @@ include 'mkl_vml.f90'
 
 #if defined(VMASS)
 
-call vcos (y, x, int(n, kind=integer_32))
+l_n=n
+call vcos (y, x, l_n)
 
 #elif defined(MKL_COS_V)
 
@@ -404,6 +420,7 @@ implicit none
 
 integer :: n
 real (kind=real_64) :: y(n), x(n)
+integer (kind=integer_32) :: l_n
 integer :: i
 
 #if defined(MKL_ACOS_V)
@@ -415,7 +432,8 @@ include 'mkl_vml.f90'
 
 #if defined(VMASS)
 
-call vacos (y, x, int(n, kind=integer_32))
+l_n=n
+call vacos (y, x, l_n)
 
 #elif defined(MKL_ACOS_V)
 
@@ -442,6 +460,7 @@ implicit none
 
 integer :: n
 real (kind=real_64) :: y(n), x(n)
+integer (kind=integer_32) :: l_n
 integer :: i
 
 #if defined(MKL_ASIN_V)
@@ -451,7 +470,8 @@ include 'mkl_vml.f90'
 
 #if defined(VMASS)
 
-call vasin (y, x, int(n, kind=integer_32))
+l_n=n
+call vasin (y, x, l_n)
 
 #elif defined(MKL_ASIN_V)
 
@@ -478,6 +498,7 @@ implicit none
 
 integer :: n
 real (kind=real_64) :: y(n), a(n),b(n)
+integer (kind=integer_32) :: l_n
 integer :: i
 
 #if defined(MKL_ATAN2_V)
@@ -487,7 +508,8 @@ include 'mkl_vml.f90'
 
 #if defined(VMASS)
 
-call vatan2 (y, a, b, int(n, kind=integer_32))
+l_n=n
+call vatan2 (y, a, b, l_n)
 
 #elif defined(MKL_ATAN2_V)
 

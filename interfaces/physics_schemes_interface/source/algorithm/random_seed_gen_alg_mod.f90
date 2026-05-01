@@ -38,7 +38,8 @@ module random_seed_gen_alg_mod
     integer(i_def), intent(in) :: ensemble_number
 
     type(xios_date) :: datetime
-    integer(i_def) :: year, month, day, hour, minute, &
+    integer(i_def) :: i
+    integer(i_def) :: year, month, day, utc_shift, hour, minute, &
                       milli_ensemble_number
     integer(i_def) :: random_seed_size, iarg, max_iarg
     integer(i_def), allocatable :: prevseed(:)

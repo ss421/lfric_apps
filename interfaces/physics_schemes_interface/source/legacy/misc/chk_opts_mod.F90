@@ -17,7 +17,6 @@ module chk_opts_mod
 use errormessagelength_mod, only: errormessagelength
 use umprintmgr,             only: umprint, ummessage, newline
 use ereport_mod,            only: ereport
-use iso_fortran_env,        only: real64
 
 implicit none
 
@@ -54,9 +53,9 @@ integer :: nconditions
 ! the code owner specified checks, these checks should be consistent with
 ! the UM rose-metadata
 interface chk_var
-  module procedure chk_int_str    ! Integers (values/ranges)
-  module procedure chk_real_str   ! Reals    (values/ranges)
-  module procedure chk_int_arr    ! Integers (values only)
+  module procedure chk_int_str   ! Integers (values/ranges)
+  module procedure chk_real_str  ! Reals    (values/ranges)
+  module procedure chk_int_arr   ! Integers (values only)
 end interface
 
 character(len=str_len) :: def_src = '' ! Calling routine if specified
@@ -476,6 +475,8 @@ end if
 
 return
 end subroutine chk_real_str
+
+
 
 !==============================================================================
 !==============================================================================
