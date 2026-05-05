@@ -24,13 +24,12 @@
         "tsteps": 20,
     }) %}
 
-{% elif task_ns.conf_name == "forecast_gh-si-for-linear-C12" %}
+{% elif task_ns.conf_name == "forecast_nwp_gal9-C12" %}
 ### useing lfric_atm: nwp_gal9-C12 - miss-using the names of things for now...
-### gh-si-for-linear == um_dump
 ### can change the time step...
     {% do task_dict.update({
         "app_name": "jedi_forecast",
-        "opt_confs": ["gh-si-for-linear"],
+        "opt_confs": ["um_dump"],
         "resolution": "C12",
         "ancil_resolution": "C12",
         "DT": 1800,
