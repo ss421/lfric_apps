@@ -12,8 +12,8 @@
 # For CPU OMP, we want to choose which files get run through PSyclone,
 # and preserve existing hand coded optimisations.
 
-# Choose which files to pre-process and PSyclone from physics_schemes / other
-# source (e.g. UKCA)
+# Choose which files to Pre-proccess and PSyclone from physics_schemes / other
+# physics source (e.g. UKCA)
 
 export PSYCLONE_PHYSICS_FILES =
 
@@ -25,15 +25,15 @@ export PSYCLONE_PHYSICS_FILES =
 export PSYCLONE_PASS_NO_SCRIPT =
 
 ##### TRANSMUTE_INCLUDE_METHOD specify_exclude #####
-# For GPU, we may want to use more generic local.py transformation scripts and
-# PSyclone by directory.
+# For GPU, we may want to use more generic local.py transformation scripts
+# and psyclone by directory.
 # Advise which directories to pass to PSyclone.
 # All files in these directories will be run through PSyclone using the
 # transmute method.
 # Also provide an optional exception list.
 # These files will be filtered, and will NOT be run through PSyclone.
 
-# Directories to PSyclone
+# Directories to psyclone
 export PSYCLONE_DIRECTORIES =
 
 # A general file exception list
