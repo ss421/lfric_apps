@@ -248,7 +248,7 @@ if (use_nl_physics) then
     call write_pv_diagnostic( u, theta, rho, exner, modeldb%clock )
 else
     print*, "I dont think this is required to make it work...."
-    ! The issue is there are two methods and one is #ifdef out 
+    ! The issue is there are two methods and one is #ifdef out
     ! so will need to fix this issue later
     !!call write_pv_diagnostic( u, theta, rho, modeldb%clock )
 endif! (use_nl_physics) then
