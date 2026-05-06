@@ -24,9 +24,9 @@
     }) %}
 
 {% elif task_ns.conf_name == "nwp_gal9-C48_MG" %}
-
+## ,"ls_and_jedi"...
     {% do task_dict.update({
-        "opt_confs": ["um_dump","test_diags"],
+        "opt_confs": ["um_dump","ls_and_jedi"],
         "resolution": "C48_MG",
         "DT": 1800,
         "tsteps": 36,
