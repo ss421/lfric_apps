@@ -351,6 +351,7 @@ contains
     dtemp_encorr = dt * temp_corr_io_value%data(1)
 
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
     if (use_spt) then
       ! Get spectral coefficients and power law from the model database
       call get_stph_values(modeldb, spt_array_names, spt_spectral_coeffc, &
@@ -361,6 +362,7 @@ contains
       call get_stph_values(modeldb, skeb_array_names, skeb_spectral_coeffc, &
                            skeb_spectral_coeffs, skeb_power_law)
     end if
+endif! (use_nl_physics) then
 #endif
 
     ! Run the timestep
@@ -384,6 +386,7 @@ contains
                   mesh, twod_mesh)
 
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
     if (use_spt) then
       ! Put spectral coefficients and power law back into model database
       call put_stph_values(modeldb, spt_array_names, spt_spectral_coeffc, &
@@ -395,6 +398,7 @@ contains
       call put_stph_values(modeldb, skeb_array_names, skeb_spectral_coeffc, &
                            skeb_spectral_coeffs, skeb_power_law)
     end if
+endif! (use_nl_physics) then
 #endif
 
     nullify(      model_clock, mesh,                          &

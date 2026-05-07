@@ -280,6 +280,8 @@ subroutine write_pv_diagnostic(u_field, theta, rho, exner, clock)
   logical(l_def), parameter :: xi3_axis = .false.
   logical(l_def), parameter :: add_W3_version = .false.
 
+if (use_nl_physics) then
+
   pv_modlev_flag = diagnostic_to_be_sampled('potential_vorticity') .or. &
                    diagnostic_to_be_sampled('init_potential_vorticity')
 
@@ -297,7 +299,7 @@ subroutine write_pv_diagnostic(u_field, theta, rho, exner, clock)
     end if
 
   end if
-
+endif! (use_nl_physics) then
 end subroutine write_pv_diagnostic
 #else
 !-------------------------------------------------------------------------------

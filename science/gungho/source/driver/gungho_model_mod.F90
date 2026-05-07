@@ -287,6 +287,7 @@ contains
                         mode=CHECKPOINTING, operation="once", &
                         id_as_name=.true.)
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
         if (use_spt) then
           do i = 1, spt_array_count
             call add_field( persistor%ckp_out, spt_array_names(i),  &
@@ -301,6 +302,7 @@ contains
                             id_as_name=.true.)
           end do
         end if
+endif! (use_nl_physics) then
 #endif
       end if
     end if
@@ -315,6 +317,7 @@ contains
                         mode=RESTARTING, operation="once", &
                         id_as_name=.true.)
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
         if (use_spt) then
           do i = 1, spt_array_count
             call add_field( persistor%ckp_inp, spt_array_names(i),  &
@@ -329,6 +332,7 @@ contains
                             id_as_name=.true.)
           end do
         end if
+endif! (use_nl_physics) then
 #endif
       end if
     end if

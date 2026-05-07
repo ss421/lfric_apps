@@ -337,6 +337,8 @@ endif! (use_nl_physics) then
 
     procedure(read_interface), pointer :: tmp_read_ptr
 
+if (use_nl_physics) then
+
     call modeldb%fields%add_empty_field_collection(iau_incs)
     iau_inc_fields => modeldb%fields%get_field_collection(iau_incs)
 
@@ -393,6 +395,8 @@ endif! (use_nl_physics) then
     call rho_inc%initialise( vector_space = w3_fs, name=trim(rho_inc_name) )
     call rho_inc%set_read_behaviour(tmp_read_ptr)
     call iau_inc_fields%add_field(rho_inc)
+
+endif! (use_nl_physics) then
 
    end subroutine create_iau_additional_fields
 #endif

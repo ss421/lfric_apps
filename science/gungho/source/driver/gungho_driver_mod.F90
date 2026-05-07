@@ -200,6 +200,7 @@ contains
                                          random_seed_io_value )
       deallocate(real_array)
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
       if (use_spt) then
         allocate(real_array(stph_spectral_dim))
         real_array = 0.0_r_def
@@ -220,6 +221,7 @@ contains
         end do
         deallocate(real_array)
       end if
+endif! (use_nl_physics) then
 #endif
     end if
 

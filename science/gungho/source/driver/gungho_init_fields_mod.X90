@@ -703,6 +703,7 @@ endif! (use_nl_physics) then
       call random_seed_io_value%set_checkpoint_write_behaviour(io_op_write_ptr)
 
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
       if (use_spt) then
         do i = 1, spt_array_count
           stph_io_value => get_io_value(modeldb%values, trim(spt_array_names(i)))
@@ -717,6 +718,7 @@ endif! (use_nl_physics) then
           call stph_io_value%set_checkpoint_write_behaviour(io_op_write_ptr)
         end do
       end if
+endif! (use_nl_physics) then
 #endif
     end if
     ! Initialise prognostic fields appropriately
@@ -1057,6 +1059,7 @@ endif! (use_nl_physics) then
           end do
 
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
           ! Read arrays for SPT and SKEB schemes
           if (use_spt) then
             do i = 1, spt_array_count
@@ -1085,6 +1088,7 @@ endif! (use_nl_physics) then
             stph_io_value%data = power_law
             deallocate(power_law)
           end if
+endif! (use_nl_physics) then
 #endif
         end if
 
