@@ -21,6 +21,10 @@ export PSYCLONE_TRANSFORMATION ?= minimum
 export PROJECT_DIR := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
 
 # Note - socrates_interface must come before jules_interface as there are dependencies on each other.
+export EXTRA_ROSE_META = jules
+export META_DIR = $(WORKING_DIR)/../rose-meta
+export ROSE_META_DIRS = $(APPS_ROOT_DIR)/rose-meta $(META_DIR)
+
 export INTERNAL_DEPENDENCIES = $(CORE_ROOT_DIR)/infrastructure \
                                $(CORE_ROOT_DIR)/components/driver \
                                $(CORE_ROOT_DIR)/components/science \
@@ -54,6 +58,7 @@ default: build
 documentation doc docs: document-uml document-latex document-api
 	$(Q)echo > /dev/null
 
+include $(APPS_ROOT_DIR)/build/extract/extract_meta.mk
 include $(CORE_ROOT_DIR)/infrastructure/build/lfric.mk
 include $(INTERNAL_DEPENDENCIES:=/build/import.mk)
 include build/project.mk
@@ -147,6 +152,10 @@ build: ALWAYS
 	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/extract.mk \
 	          SOURCE_DIR=source \
 	          WORKING_DIR=$(WORKING_DIR)
+	$(call MESSAGE,========================================)
+	$(call MESSAGE,Extracting External Rose Metadata)
+	$(call MESSAGE,========================================)
+	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/build/extract/extract_meta.mk
 	$(call MESSAGE,=========================================================)
 	$(call MESSAGE,Generating $(PROJECT) namelist loaders)
 	$(call MESSAGE,=========================================================)
@@ -154,7 +163,7 @@ build: ALWAYS
 	          SOURCE_DIR=$(APPS_ROOT_DIR)/science/gungho/source \
 	          META_FILE_DIR=$(META_FILE_DIR)
 	$(call MESSAGE,========================================)
-	$(call MESSAGE,PSycloning interface components)
+	$(call MESSAGE,PSycloning interface components)ss421_update_forecast_config_HEAD
 	$(call MESSAGE,========================================)
 	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/psyclone/psyclone_psykal.mk \
 	          SOURCE_DIR=$(APPS_ROOT_DIR)/interfaces/coupled_interface/source \
@@ -237,7 +246,8 @@ unit-tests/%: export PROJECT = $(PROJECT_NAME)
 unit-tests/%: export SOURCE_DIR = source
 unit-tests/%: export TEST_DIR = unit-test
 unit-tests/%: export WORKING_DIR := $(WORKING_DIR)/unit-test
-unit-tests: unit-tests/run
+unit-tests: extract_meta unit-tests/run
+unit-tests/build: extract_meta unit-tests/build
 
 ##############################################################################
 # Integration tests
