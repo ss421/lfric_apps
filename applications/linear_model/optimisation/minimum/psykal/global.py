@@ -1,5 +1,5 @@
 ##############################################################################
-# (c) Crown copyright 2023 Met Office. All rights reserved.
+# (c) Crown copyright 2022 Met Office. All rights reserved.
 # The file LICENCE, distributed with this code, contains details of the terms
 # under which the code may be used.
 ##############################################################################
@@ -23,7 +23,7 @@ def trans(psyir):
     Applies PSyclone redundant computation transformations on
     initialisation built-ins only.
 
-    :param psyir: the PSyIR of the PSyIR-layer.
+    :param psyir: the PSyIR of the PSy-layer.
     :type psyir: :py:class:`psyclone.psyir.nodes.FileContainer`
 
     '''
