@@ -158,6 +158,7 @@ module slow_physics_alg_mod
                             only: aerosol_mesh_name, &
                                   coarse_rad_aerosol
   use initialization_config_mod, only: coarse_aerosol_ancil
+  use nl_physics_config_mod,     only : use_nl_physics
 
   implicit none
 
@@ -438,7 +439,7 @@ contains
     end if
 
 #ifdef UM_PHYSICS
-
+if (use_nl_physics) then
     if ( microphysics == microphysics_um .or. &
          radiation == radiation_socrates ) then
 
@@ -936,6 +937,7 @@ contains
     if (murk_prognostic) then
       call murk_alg(aerosol_fields, derived_fields, turbulence_fields)
     end if
+endif! (use_nl_physics) then
 #endif
 
     if (evap_condense_placement == evap_condense_placement_slow .and. &
@@ -1068,6 +1070,7 @@ contains
     end if
 
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
     !--------------------------------------------------------------------
     ! PC2 checking of current state and preparation for advection
     !--------------------------------------------------------------------
@@ -1211,6 +1214,7 @@ contains
         end if
       end if ! slow bl
     end if ! bl
+endif! (use_nl_physics) then
 #endif
 
     call print_field_stats_alg(dtheta, LOG_LEVEL_INFO, printmin=-20.0_r_def, &

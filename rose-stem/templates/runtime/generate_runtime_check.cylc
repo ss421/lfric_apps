@@ -47,7 +47,7 @@
 
     [[{{task}}]]
         inherit={{inherit.str|upper}}
-        script = 'rose task-run --app-key=check_kgo'
+        script = 'rose task-run -v --app-key=check_kgo'
         execution time limit = PT{{task_values["tech-tests_wallclock"]}}M
         [[[environment]]]
             CURRENT_KGO = {{current_kgo}}
@@ -82,7 +82,7 @@
 
     [[{{task}}]]
         inherit={{inherit.str|upper}}
-        script = rose task-run --app-key=phystest
+        script = rose task-run -v --app-key=phystest
         execution time limit = PT{{task_values["tech-tests_wallclock"]}}M
         [[[environment]]]
             PHYSTEST_DIR = {{task_output_dir}}
@@ -102,7 +102,7 @@
 
     [[{{task}}]]
         inherit={{inherit.str|upper}}
-        script = 'rose task-run --app-key=perturbation_compare'
+        script = 'rose task-run -v --app-key=perturbation_compare'
         execution time limit = PT{{task_values["tech-tests_wallclock"]}}M
         [[[environment]]]
             PERT_ON_TASK  = {{perturb_output}}

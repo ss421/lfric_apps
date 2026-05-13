@@ -33,6 +33,7 @@ module init_physics_prognostics_alg_mod
 #endif
   use log_mod,                        only : log_event,         &
                                              LOG_LEVEL_INFO
+  use nl_physics_config_mod,           only : use_nl_physics
 
   implicit none
 
@@ -87,6 +88,7 @@ contains
 
 #ifdef UM_PHYSICS
 
+if (use_nl_physics) then
     ! Only actually initialise the fields if we're using the external code
     ! Most things need calling regardless of whether the scheme is on,
     ! because we initialise fields used by other schemes if the scheme
@@ -118,7 +120,7 @@ contains
     call init_stph_fields_alg(stph_fields)
 
     call log_event( 'Physics field collections initialised', LOG_LEVEL_INFO )
-
+endif! (use_nl_physics) then
 #endif
 
   end subroutine init_physics_prognostics_alg

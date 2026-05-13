@@ -22,7 +22,7 @@
 {# Generate the script command #}
 {% set script_str = namespace(name="") %}
 {% set script_str.name = "$CYLC_WORKFLOW_RUN_DIR/bin/application_results_setup.sh ; " %}
-{% set script_str.name = script_str.name~"rose task-run --app-key="~task_values["app_name"] %}
+{% set script_str.name = script_str.name~"rose task-run -v --app-key="~task_values["app_name"] %}
 {% if task_values["app_name"] == "canned_test" %}
     {% set script_str.name = script_str.name~" --command-key=$RUN_METHOD" %}
 {% else %}

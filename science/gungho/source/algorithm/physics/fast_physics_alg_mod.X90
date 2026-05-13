@@ -84,6 +84,7 @@ module fast_physics_alg_mod
   use stph_main_alg_mod, only: stph_main_alg
   use blpert_main_alg_mod, only: blpert_main_alg
 #endif
+  use nl_physics_config_mod,  only : use_nl_physics
 
   implicit none
 
@@ -235,6 +236,7 @@ contains
                 setval_X(u_latest, u_star) )
 
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
     !--------------------------------------------------------------------
     ! UM implicit boundary layer
     !--------------------------------------------------------------------
@@ -406,6 +408,7 @@ contains
 
       end if
     end if
+endif! (use_nl_physics) then
 #endif
 
     !--------------------------------------------------------------------

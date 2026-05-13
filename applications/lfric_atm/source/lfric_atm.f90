@@ -31,6 +31,7 @@ program lfric_atm
   use timing_mod,             only: init_timing, final_timing, &
                                     start_timing, stop_timing, &
                                     tik, LPROF
+  use nl_physics_config_mod, only: use_nl_physics
 
   implicit none
 
@@ -43,6 +44,9 @@ program lfric_atm
 
   character(str_max_filename) :: timer_output_path
   logical(l_def)              :: subroutine_timers
+
+  ! Set use_nl_physics=true to avoid the hacked-out code
+  use_nl_physics = .true.
 
   call parse_command_line( filename )
 

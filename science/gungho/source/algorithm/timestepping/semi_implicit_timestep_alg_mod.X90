@@ -154,6 +154,7 @@ module semi_implicit_timestep_alg_mod
 
   use timing_mod,                 only: start_timing, stop_timing, tik, LPROF
   use ageofair_alg_mod,           only: ageofair_update
+  use nl_physics_config_mod,      only : use_nl_physics
 
   implicit none
 
@@ -350,6 +351,7 @@ contains
     dtemp_encorr = dt * temp_corr_io_value%data(1)
 
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
     if (use_spt) then
       ! Get spectral coefficients and power law from the model database
       call get_stph_values(modeldb, spt_array_names, spt_spectral_coeffc, &
@@ -360,6 +362,7 @@ contains
       call get_stph_values(modeldb, skeb_array_names, skeb_spectral_coeffc, &
                            skeb_spectral_coeffs, skeb_power_law)
     end if
+endif! (use_nl_physics) then
 #endif
 
     ! Run the timestep
@@ -383,6 +386,7 @@ contains
                   mesh, twod_mesh)
 
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
     if (use_spt) then
       ! Put spectral coefficients and power law back into model database
       call put_stph_values(modeldb, spt_array_names, spt_spectral_coeffc, &
@@ -394,6 +398,7 @@ contains
       call put_stph_values(modeldb, skeb_array_names, skeb_spectral_coeffc, &
                            skeb_spectral_coeffs, skeb_power_law)
     end if
+endif! (use_nl_physics) then
 #endif
 
     nullify(      model_clock, mesh,                          &
@@ -1156,6 +1161,7 @@ contains
     ! changes are applied from the solver.
     ! ----------------------------------------------------------------------
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
     if (use_physics .and. cloud == cloud_um  ) then
       call cld_alg( self%dtheta_cld, mr,                                     &
                     self%state(igh_t), self%state(igh_p), self%state(igh_d), &
@@ -1170,6 +1176,7 @@ contains
                                  convection_fields, initialise=.false. )
       end if ! microphysics_casim
     end if
+endif! (use_nl_physics) then
 #endif
 
     ! Update derived variables for time level n+1
@@ -1186,6 +1193,7 @@ contains
     ! Call UKCA for GLOMAP-mode prognostic aerosol updates
     !--------------------------------------------------------------------
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
     if ( aerosol == aerosol_um .and.            &
          ( glomap_mode == glomap_mode_ukca .or. &
            glomap_mode == glomap_mode_dust_and_clim ) ) then
@@ -1196,6 +1204,7 @@ contains
                               surface_fields, soil_fields,               &
                               self%state, mr, model_clock )
     end if
+endif! (use_nl_physics) then
 #endif
 
     ! Write diagnostic output

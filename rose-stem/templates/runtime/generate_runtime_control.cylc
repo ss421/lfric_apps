@@ -92,7 +92,7 @@
     [[{{task}}]]
         inherit = HOUSEKEEPING, {{platform|upper}}_HOUSEKEEPING
         execution time limit = PT5M
-        script = rose task-run --app-key=housekeeping
+        script = rose task-run -v --app-key=housekeeping
         [[[directives]]]
             {{ set_task_resources(1, [1, "GB"]) }}
 

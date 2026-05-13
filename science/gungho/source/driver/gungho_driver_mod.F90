@@ -111,6 +111,7 @@ module gungho_driver_mod
   use process_send_fields_2d_mod,  only : save_sea_ice_frac_previous
 #endif
 
+  use nl_physics_config_mod,               only : use_nl_physics
   implicit none
 
   private
@@ -199,6 +200,7 @@ contains
                                          random_seed_io_value )
       deallocate(real_array)
 #ifdef UM_PHYSICS
+if (use_nl_physics) then
       if (use_spt) then
         allocate(real_array(stph_spectral_dim))
         real_array = 0.0_r_def
@@ -219,6 +221,7 @@ contains
         end do
         deallocate(real_array)
       end if
+endif! (use_nl_physics) then
 #endif
     end if
 
@@ -251,6 +254,8 @@ contains
 #endif
 
 #ifdef UM_PHYSICS
+
+if (use_nl_physics) then
     ! If IAU is active and increments need to be added instantaneously, to the initial
     ! state, then do this now. The IAU should not be activated at this stage in
     ! the case of a checkpoint-restart.
@@ -308,6 +313,7 @@ contains
          flux_bc_opt == flux_bc_opt_specified_scalars_tstar ) then
       call flux_calc_init( modeldb )
     end if
+endif! (use_nl_physics) then
 #endif
 
     nullify(mesh, twod_mesh, aerosol_mesh, aerosol_twod_mesh)
@@ -357,6 +363,8 @@ contains
       end if
     end if
 #ifdef UM_PHYSICS
+
+if (use_nl_physics) then
     nullify( surface_fields, ancil_fields )
 
     regrid_operation => map_scalar_intermesh
@@ -372,6 +380,7 @@ contains
       call setup_step_multifile_io( io_context_name, modeldb )
     end if
 
+endif! (use_nl_physics) then
 #endif
     ! Get model_axes out of modeldb
     model_axes => get_time_axes_from_collection(modeldb%values, "model_axes" )
@@ -381,6 +390,8 @@ contains
     twod_mesh => mesh_collection%get_mesh(mesh, TWOD)
 
 #ifdef UM_PHYSICS
+
+if (use_nl_physics) then
     ! Specified sensible and latent heat fluxes
     if ( flux_bc_opt == flux_bc_opt_specified_scalars .or. &
          flux_bc_opt == flux_bc_opt_specified_scalars_tstar ) then
@@ -393,6 +404,7 @@ contains
       call update_tile_temperature_alg ( modeldb%clock, &
                                          surface_fields )
     end if
+endif! (use_nl_physics) then
 #endif
 
     lbc_fields => modeldb%fields%get_field_collection("lbc_fields")
@@ -425,6 +437,8 @@ contains
     endif
 
 #ifdef UM_PHYSICS
+
+if (use_nl_physics) then
     ! If IAU is active and increments need to be added over a time window, then do this
     ! at the start of every ts within the required time window
     if ( iau ) then
@@ -436,6 +450,7 @@ contains
          use_random_parameters ) then
       call stph_rp_main_alg( modeldb )
     end if
+endif! (use_nl_physics) then
 #endif
 
     ! Perform a timestep
@@ -453,6 +468,8 @@ contains
     end if
 
 #ifdef UM_PHYSICS
+
+if (use_nl_physics) then
     ! Update time-varying ancillaries
     ! This is done last in the timestep, because the time data of the
     ! ancillaries needs to be that of the start of timestep, but the
@@ -474,6 +491,7 @@ contains
 
     ! Update the time varying trace gases
     call gas_calc_all()
+endif! (use_nl_physics) then
 #endif
 
     ! Write out the model state

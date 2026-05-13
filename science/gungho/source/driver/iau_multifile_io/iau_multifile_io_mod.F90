@@ -46,6 +46,7 @@ module iau_multifile_io_mod
   use namelist_mod,                only: namelist_type
   use step_calendar_mod,           only: step_calendar_type
 
+  use nl_physics_config_mod,               only : use_nl_physics
   implicit none
 
   private
@@ -87,6 +88,7 @@ contains
     character(str_def) :: iau_incs
     integer(i_def)     :: iau_time
 
+if (use_nl_physics) then
     if ( iau_use_addinf ) then
       iau_incs = 'iau_addinf_fields'
       call iau_incs_firstfile_io ( io_context_name, &
@@ -140,7 +142,7 @@ contains
                                iau_time, name, filename )
       end do
     end if
-
+endif! (use_nl_physics) then
 #endif
 
   end subroutine init_multifile_io
@@ -207,6 +209,7 @@ contains
 
     character(str_def) :: name
 
+if (use_nl_physics) then
     if ( iau_use_addinf ) then
       call iter_addinf%initialise(modeldb%config%iau_addinf_io)
       do while (iter_addinf%has_next())
@@ -235,6 +238,7 @@ contains
         call step_multifile_io(io_context_name, modeldb, name)
       end do
     end if
+endif! (use_nl_physics) then
 #endif
 
   end subroutine setup_step_multifile_io
