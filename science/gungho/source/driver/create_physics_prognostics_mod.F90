@@ -235,7 +235,7 @@ contains
     end if
 
 #ifdef UM_PHYSICS
-    
+
   if ( surface            /= surface_none             .or. &
        aerosol            /= aerosol_none             .or. &
        cloud              /= cloud_none               .or. &
@@ -246,7 +246,7 @@ contains
        electric           /= electric_none            .or. &
        stochastic_physics /= stochastic_physics_none  .or. &
        boundary_layer     /= boundary_layer_none ) then
-    
+
     !========================================================================
     ! Fields owned by the radiation scheme
     !========================================================================

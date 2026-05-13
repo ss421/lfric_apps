@@ -40,7 +40,7 @@ module linear_diagnostics_driver_mod
   use lfric_xios_write_mod,      only : write_field_generic
   use sci_geometric_constants_mod,                                             &
                                  only : get_panel_id
-  
+
   implicit none
 
   private
@@ -94,7 +94,7 @@ contains
     end if
 
   end subroutine linear_write_initial_output
-  
+
   !> @brief Outputs simple diagnostics from linear model
   !> @param[in,out] modeldb             Working data set of model run.
   !> @param[in]     mesh                The primary mesh
@@ -132,7 +132,7 @@ contains
     type(field_type), pointer :: exner_in_wth
 
     type(field_array_type), pointer :: mr_array
-    
+
     type(field_type), pointer :: ls_theta => null()
     type(field_type), pointer :: ls_u => null()
     type(field_type), pointer :: ls_rho => null()
@@ -142,7 +142,7 @@ contains
 
     ! Iterator for field collection
     type(field_collection_iterator_type)  :: iterator
-    
+
     ! A pointer used for retrieving fields from collections
     ! when iterating over them
     class(field_parent_type),   pointer :: field_ptr
@@ -163,7 +163,7 @@ contains
     ls_mr => ls_mr_array%bundle
     derived_fields => modeldb%fields%get_field_collection("derived_fields")
     panel_id => get_panel_id(mesh%get_id())
-    
+
     call prognostic_fields%get_field('theta', theta)
     call prognostic_fields%get_field('u', u)
     call prognostic_fields%get_field('rho', rho)
