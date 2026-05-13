@@ -36,6 +36,19 @@
         "mpi_parts": 6,
     }) %}
 
+{% elif task_ns.conf_name == "forecast_nwp_gal9_da-C12" %}
+    # This is based on the lfric_atm: nwp_gal9-C12_da configuration
+    # This includes the IAU
+    {% do task_dict.update({
+        "app_name": "jedi_forecast",
+        "opt_confs": ["da"],
+        "resolution": "C12",
+        "ancil_resolution": "C12",
+        "DT": 1800,
+        "tsteps": 13,
+        "mpi_parts": 6,
+    }) %}
+
 {% elif task_ns.conf_name == "forecast_nwp_gal9-C48_MG" %}
     # This is based on the lfric_atm: nwp_gal9-C48_MG configuration
     {% do task_dict.update({
