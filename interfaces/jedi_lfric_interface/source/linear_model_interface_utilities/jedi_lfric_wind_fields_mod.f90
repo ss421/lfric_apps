@@ -31,7 +31,7 @@ module jedi_lfric_wind_fields_mod
   implicit none
 
   private
-  public :: create_scalar_winds, setup_vector_wind
+  public :: create_scalar_winds, setup_vector_wind, setup_interface_fields
 
 contains
 
@@ -39,10 +39,10 @@ contains
   !> @brief Create scalar wind fields in the modeldb depository and prognostics
   !>        field collections
   !>
-  !> @detail Creates and adds scalar winds to the modeldb depository and
-  !>         prognostic field collections. This provides cell-centred fields
-  !>         that the model interfaces (LFRIC-JEDI, Jedi emulator) can link and
-  !>         copy to/from.
+  !> @detail Creates and adds scalar winds in the modeldb interface_fields and
+  !>         adds a link to the W2 prognostic wind field. This provides
+  !>         cell-centred fields that the model interfaces (LFRIC-JEDI, Jedi
+  !>         emulator) can link and copy to/from.
   !>
   !> @param[inout] modeldb    The modeldb that contains the model_data
   !> @param[in]    mesh       The current 3d mesh
@@ -53,12 +53,12 @@ contains
     implicit none
 
     type(modeldb_type), target, intent(inout) :: modeldb
+    type( mesh_type ),                pointer :: mesh
 
     ! Local
-    type( mesh_type ),                 pointer :: mesh
     type( field_type ),                pointer :: field_ptr
     class( pure_abstract_field_type ), pointer :: tmp_ptr
-    type( field_collection_type ),     pointer :: depository
+    type( field_collection_type ),     pointer :: interface_fields
     type( field_collection_type ),     pointer :: prognostic_fields
     type( function_space_type ),       pointer :: w3_fs
     type( function_space_type ),       pointer :: wtheta_fs
@@ -75,10 +75,10 @@ contains
     call log_event( 'jedi-lfric: Creating and adding scalar winds', &
                     LOG_LEVEL_DEBUG )
 
-    nullify( mesh, field_ptr, tmp_ptr, depository, prognostic_fields )
+    nullify( mesh, field_ptr, tmp_ptr, interface_fields, prognostic_fields )
     nullify( wtheta_fs, w3_fs, base_mesh_nml )
 
-    depository => modeldb%fields%get_field_collection("depository")
+    interface_fields => modeldb%fields%get_field_collection("interface_fields")
     prognostic_fields => modeldb%fields%get_field_collection("prognostic_fields")
 
     ! Get the mesh
@@ -92,34 +92,57 @@ contains
     wtheta_fs => function_space_collection%get_fs(mesh, element_order_h,       &
                                                   element_order_v, Wtheta)
 
-    ! Populate the depository if fields are not present
-    if (.not.depository%field_exists('u_in_w3')) then
-      call u_in_w3%initialise( vector_space=w3_fs, name="u_in_w3" )
-      call depository%add_field( u_in_w3 )
-    endif
-    if (.not.depository%field_exists('v_in_w3')) then
-      call v_in_w3%initialise( vector_space=w3_fs, name="v_in_w3" )
-      call depository%add_field( v_in_w3 )
-    endif
-    if (.not.depository%field_exists('w_in_wth')) then
-      call w_in_wth%initialise( vector_space=wtheta_fs, name="w_in_wth" )
-      call depository%add_field( w_in_wth )
-    endif
+    ! Add scalar winds to interface with jedi
+    call u_in_w3%initialise( vector_space=w3_fs, name="u_in_w3" )
+    call interface_fields%add_field( u_in_w3 )
 
-    ! Populate the prognostic field collection
-    call depository%get_field('u_in_w3', field_ptr)
-    tmp_ptr => field_ptr
-    call prognostic_fields%add_reference_to_field(tmp_ptr)
+    call v_in_w3%initialise( vector_space=w3_fs, name="v_in_w3" )
+    call interface_fields%add_field( v_in_w3 )
 
-    call depository%get_field('v_in_w3', field_ptr)
-    tmp_ptr => field_ptr
-    call prognostic_fields%add_reference_to_field(tmp_ptr)
+    call w_in_wth%initialise( vector_space=wtheta_fs, name="w_in_wth" )
+    call interface_fields%add_field( w_in_wth )
 
-    call depository%get_field('w_in_wth', field_ptr)
+    ! Add the W2 prognostic wind field
+    call prognostic_fields%get_field('u', field_ptr)
     tmp_ptr => field_ptr
-    call prognostic_fields%add_reference_to_field(tmp_ptr)
+    call interface_fields%add_reference_to_field(tmp_ptr)
 
   end subroutine create_scalar_winds
+
+  subroutine setup_interface_fields( modeldb, variable_names )
+
+    use driver_modeldb_mod, only : modeldb_type
+
+    implicit none
+
+    type(modeldb_type), target, intent(inout) :: modeldb
+    character(*), intent(in) :: variable_names(:)
+
+    ! Local
+    type( field_type ),                pointer :: field_ptr
+    class( pure_abstract_field_type ), pointer :: tmp_ptr
+    type( field_collection_type ),     pointer :: interface_fields
+    type( field_collection_type ),     pointer :: prognostic_fields
+    integer( kind=i_def ) :: i
+
+    call log_event( 'jedi-lfric: Creating and adding scalar winds', &
+                    LOG_LEVEL_DEBUG )
+
+    nullify( field_ptr, tmp_ptr, interface_fields, prognostic_fields )
+
+    interface_fields => modeldb%fields%get_field_collection("interface_fields")
+    prognostic_fields => modeldb%fields%get_field_collection("prognostic_fields")
+    
+    ! Add reference to prognostic_fields if it has not already been added
+    do i=1,size(variable_names)
+      if (.not.interface_fields%field_exists(variable_names(i))) then  
+        call prognostic_fields%get_field(variable_names(i), field_ptr)
+        tmp_ptr => field_ptr
+        call interface_fields%add_reference_to_field(tmp_ptr)
+      endif
+    enddo
+
+  end subroutine setup_interface_fields
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   !> @brief Setup a W2 vector wind field in the linear state

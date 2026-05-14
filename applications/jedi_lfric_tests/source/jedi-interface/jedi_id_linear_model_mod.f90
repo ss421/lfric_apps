@@ -37,7 +37,8 @@ module jedi_id_linear_model_mod
                                             ls_variable_names, &
                                             create_linear_fields
   use jedi_lfric_wind_fields_mod,    only : create_scalar_winds, &
-                                            setup_vector_wind
+                                            setup_vector_wind,   &
+                                            setup_interface_fields
   use jedi_state_mod,                only : jedi_state_type
   use linear_state_trajectory_mod,   only : linear_state_trajectory_type
   use log_mod,                       only : log_event,         &
@@ -142,9 +143,10 @@ subroutine initialise( self, jedi_geometry, config_filename )
   ! perform interpolation between horizontally cell-centred and
   ! edge based W2 winds.
   call create_scalar_winds( self%modeldb, jedi_geometry%get_mesh() )
+  call setup_interface_fields( self%modeldb, variable_names )
 
   ! Set up extra fields for incremental wind interpolation, if required
-  prognostic_fields => self%modeldb%fields%get_field_collection("prognostic_fields")
+  prognostic_fields => self%modeldb%fields%get_field_collection("interface_fields")
   jedi_linear_model_config => self%modeldb%configuration%get_namelist('jedi_linear_model')
   call jedi_linear_model_config%get_value( 'incremental_wind_interpolation', incremental_wind_interpolation )
   if (incremental_wind_interpolation) then
@@ -217,7 +219,7 @@ subroutine model_initTL(self, increment)
   type( field_collection_type),  pointer :: moisture_fields
 
   ! 1. Update the the modeldb prognostic fields
-  prognostic_fields => self%modeldb%fields%get_field_collection("prognostic_fields")
+  prognostic_fields => self%modeldb%fields%get_field_collection("interface_fields")
 
   ! Get Atlas field emulators to the model_prognostics
   call increment%get_to_field_collection( variable_names, prognostic_fields )
@@ -263,7 +265,7 @@ subroutine model_stepTL(self, increment)
   call update_ls_moist_fields( ls_fields, moisture_fields )
 
   ! Copy pre-step vector winds if doing incremental wind interpolation
-  prognostic_fields => self%modeldb%fields%get_field_collection("prognostic_fields")
+  prognostic_fields => self%modeldb%fields%get_field_collection("interface_fields")
   call self%wind_transform%process(prognostic_fields)
 
   ! 2. Step the linear model
@@ -316,7 +318,7 @@ subroutine model_initAD(self, increment)
   call init_time( self%modeldb )
 
   ! Update the prognostic fields: zero LFRic fields
-  prognostic_fields => self%modeldb%fields%get_field_collection("prognostic_fields")
+  prognostic_fields => self%modeldb%fields%get_field_collection("interface_fields")
   call zero_field_collection(prognostic_fields)
   moisture_fields => self%modeldb%fields%get_field_collection("moisture_fields")
   call zero_moist_fields(moisture_fields)
@@ -359,7 +361,7 @@ subroutine model_stepAD(self, increment)
   !>       the moist dynamics fields after the equivalent call in the TL step
 
   ! 3. Update the Atlas fields from the LFRic prognostic fields
-  prognostic_fields => self%modeldb%fields%get_field_collection("prognostic_fields")
+  prognostic_fields => self%modeldb%fields%get_field_collection("interface_fields")
 
   ! Set model_prognostics to the Atlas field emulators
   call increment%set_from_field_collection_ad( variable_names, prognostic_fields )
@@ -394,7 +396,7 @@ subroutine model_finalAD(self, increment)
   ! 1. Update the the modeldb prognostic fields
   moisture_fields => self%modeldb%fields%get_field_collection("moisture_fields")
   call adj_init_moist_fields( moisture_fields )
-  prognostic_fields => self%modeldb%fields%get_field_collection("prognostic_fields")
+  prognostic_fields => self%modeldb%fields%get_field_collection("interface_fields")
   call copy_moist_fields_to_prognostic( moisture_fields, prognostic_fields )
 
   ! Cell-centred winds to Edge based winds
