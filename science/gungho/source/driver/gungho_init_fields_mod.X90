@@ -566,7 +566,7 @@ contains
                                            ancil_fields, &
                                            mesh, twod_mesh )
       end select
-    end if 
+    end if
 #endif
 
   end subroutine create_physics_model_data
