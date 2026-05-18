@@ -10,4 +10,4 @@ $(info Project specials for Cray compiler)
 
 export FFLAGS_UM_PHYSICS = -s real64
 
-include $(PROJECT_DIR)/build/fortran/crayftn/$(PROFILE).mk
+include $(PROJECT_DIR)/../lfric_atm/build/fortran/crayftn/$(PROFILE).mk
