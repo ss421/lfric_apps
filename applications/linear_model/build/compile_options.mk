@@ -1,5 +1,5 @@
 ##############################################################################
-# (c) Crown copyright 2017 Met Office. All rights reserved.
+# (c) Crown copyright 2017-2026 Met Office. All rights reserved.
 # The file LICENCE, distributed with this code, contains details of the terms
 # under which the code may be used.
 ##############################################################################
@@ -11,7 +11,7 @@
 
 $(info UM physics specific compile options)
 
-include $(PROJECT_DIR)/build/fortran/$(FORTRAN_COMPILER).mk
+include $(LFRIC_ATM_DIR)/build/fortran/$(FORTRAN_COMPILER).mk
 
 casim/%.o: private FFLAGS_EXTRA = $(FFLAGS_UM_PHYSICS)
 ukca/%.o: private FFLAGS_EXTRA = $(FFLAGS_UM_PHYSICS)
