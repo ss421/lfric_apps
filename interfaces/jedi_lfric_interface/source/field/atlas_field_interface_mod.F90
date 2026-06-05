@@ -244,9 +244,10 @@ subroutine field_initialiser( self, atlas_data_ptr, map_horizontal_ptr, &
 
   ! 1. Vertical points
   if ( n_vertical_lfric /= self%n_vertical_lfric ) then
-    write(log_scratch_space, '(A,I0,A,I0,A)') &
+    write(log_scratch_space, '(A,I0,A,I0,2A)') &
       "Field mismatch in atlas field interface constructor for the number of vertical points. The atlas field has ", &
-      self%n_vertical_lfric, " points and the LFRic field has ", n_vertical_lfric, " points."
+      self%n_vertical_lfric, " points and the LFRic field has ", n_vertical_lfric, " points for: ", trim(self%atlas_name)
+      ! might be worth making the other ERROR logs to be more verbose...
     call log_event( log_scratch_space, LOG_LEVEL_ERROR )
   end if
 

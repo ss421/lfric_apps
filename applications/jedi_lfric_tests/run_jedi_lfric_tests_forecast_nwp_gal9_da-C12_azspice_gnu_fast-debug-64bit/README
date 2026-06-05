@@ -1,0 +1,13 @@
+## Local testing:
+
+# Setup env via:
+ml use ~lfricadmin/lmod
+ml lfric
+
+# Build via
+./build/local_build.py jedi_lfric_tests
+
+# Run via:
+OMP_NUM_THREADS=1 mpiexec -np 6 ../bin/jedi_forecast configuration.nml
+#NOTE: There apears to be an issue with this configuration when run with 1 PE. 
+#      6 MPI ranks seems to work fine so testing with that for now.

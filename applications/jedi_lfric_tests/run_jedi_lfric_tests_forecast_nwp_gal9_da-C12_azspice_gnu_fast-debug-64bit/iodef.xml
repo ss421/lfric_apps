@@ -7,34 +7,36 @@
   <context id = "gungho_atm">
 
     <!-- Include variable definitions -->
-    <variable_definition src="$METADATA/variable_def_main.xml"/>
+    <variable_definition src="../../lfric_atm/metadata/variable_def_main.xml"/>
 
     <!-- Include axis definitions -->
-    <axis_definition src="$METADATA/axis_def_main.xml"/>
-    <axis_definition src="./axis_def_plev.xml"/>
+    <axis_definition src="../../lfric_atm/metadata/axis_def_main.xml"/>
+    <axis_definition src="./xios_files/axis_def_plev.xml"/>
 
     <!-- Include domain definitions -->
-    <domain_definition src="$METADATA/domain_def_main.xml"/>
+    <domain_definition src="../../lfric_atm/metadata/domain_def_main.xml"/>
 
     <!-- Include grid definitions -->
-    <grid_definition src="$METADATA/grid_def_main.xml"/>
-    <grid_definition src="$METADATA/grid_def_aero_ctl.xml"/>
-    <grid_definition src="$METADATA/grid_def_radaer_ctl.xml"/>
+    <grid_definition src="../../lfric_atm/metadata/grid_def_main.xml"/>
+    <grid_definition src="../../lfric_atm/metadata/grid_def_aero_ctl.xml"/>
+    <grid_definition src="../../lfric_atm/metadata/grid_def_radaer_ctl.xml"/>
 
     <!-- Include field definitions -->
-    <field_definition src="$METADATA/lfric_dictionary.xml"/>
-    <field_definition src="$METADATA/field_def_diags.xml"/>
-    <field_definition src="$METADATA/field_def_initial_diags.xml"/>
+    <field_definition src="../../lfric_atm/metadata/lfric_dictionary.xml"/>
+    <field_definition src="../../lfric_atm/metadata/field_def_diags.xml"/>
+    <field_definition src="../../lfric_atm/metadata/field_def_initial_diags.xml"/>
 
     <!-- Include file definitions -->
-    <file_definition src="./file_def_check_restart.xml"/>
-    <file_definition src="./file_def_ancil_main.xml"/>
-    <file_definition src="./file_def_ancil_gal.xml"/>
-    <file_definition src="./file_def_ancil_hadisst.xml"/>
-    <file_definition src="./file_def_diags_gal_nwp.xml"/>
-    <file_definition src="./file_def_diags_ver.xml"/>
-    <file_definition src="./file_def_diags_name.xml"/>
-    <file_definition src="./file_def_initial_diags.xml"/>
+    <file_definition src="./xios_files/file_def_check_restart.xml"/>
+    <file_definition src="./xios_files/file_def_ancil_main.xml"/>
+    <file_definition src="./xios_files/file_def_ancil_gal.xml"/>
+    <file_definition src="./xios_files/file_def_ancil_surf.xml"/>
+    <file_definition src="./xios_files/file_def_iau.xml"/>
+    <file_definition src="./xios_files/file_def_diags_gal_nwp.xml"/>
+    <file_definition src="./xios_files/file_def_diags_ver.xml"/>
+    <file_definition src="./xios_files/file_def_diags_name.xml"/>
+    <file_definition src="./xios_files/file_def_diags_var_ops.xml"/>
+    <file_definition src="./xios_files/file_def_initial_diags.xml"/>
 
     <!-- Local file definitions -->
     <file_definition type="one_file" time_counter="none">
@@ -150,7 +152,6 @@
         <field id="read_inc_qcl" name="qcl" long_name="specific_humidity_cloud_liquid_inc" unit="1" grid_ref="full_level_face_grid" operation="once"/>
         <field id="read_inc_rho_r2" name="rho_r2" long_name="density_times_r_squared_inc" unit="kg m-1" grid_ref="half_level_face_grid" operation="once"/>
       </field_group>
-
     </field_definition>
 
     <file_definition type="one_file" time_counter="none">
