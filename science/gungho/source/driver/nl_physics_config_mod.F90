@@ -13,5 +13,6 @@ module nl_physics_config_mod
   implicit none
 
   logical, public, save :: use_nl_physics = .false.
+  logical, public, save :: iau_outerloop = .true.
 
 end module nl_physics_config_mod

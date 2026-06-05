@@ -111,7 +111,7 @@ module gungho_driver_mod
   use process_send_fields_2d_mod,  only : save_sea_ice_frac_previous
 #endif
 
-  use nl_physics_config_mod,               only : use_nl_physics
+  use nl_physics_config_mod,       only : use_nl_physics, iau_outerloop
   implicit none
 
   private
@@ -262,7 +262,7 @@ if (use_nl_physics) then
     if ( ( iau ) .and.                               &
        ( ( iau_mode == iau_mode_instantaneous ) .OR. &
          ( iau_mode == iau_mode_time_mixed ) ) ) then
-      if ( .not. checkpoint_read ) then
+      if ( .not. ( checkpoint_read .or. iau_outerloop )) then
         call update_iau_alg( modeldb,                     &
                              twod_mesh,                   &
                              iau_ainc_active = .true.,    &
@@ -271,8 +271,11 @@ if (use_nl_physics) then
                              iau_pertinc_active = .false. )
       end if
 
-      ! IAU increment fields can now be cleared from the depository
-      call remove_field_collection( modeldb, "iau_fields" )
+      ! IAU increment fields can now be cleared from the depository unless this
+      ! is a DA outer loop application
+      if ( .not. iau_outerloop ) then
+        !call remove_field_collection( modeldb, "iau_fields" )
+      endif
 
     end if
 

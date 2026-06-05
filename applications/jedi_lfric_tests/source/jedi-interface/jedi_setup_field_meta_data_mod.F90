@@ -111,6 +111,18 @@ module jedi_setup_field_meta_data_mod
       case ( "land_fraction" )
         function_space = W3
         is_2d = .true.
+      case ( "q" )
+        function_space = Wtheta
+        is_2d = .false.
+      case ( "qcf" )
+        function_space = Wtheta
+        is_2d = .false.
+      case ( "qcl" )
+        function_space = Wtheta
+        is_2d = .false.
+      case ( "rho_r2" )
+        function_space = W3
+        is_2d = .false.
       case default
         write ( log_scratch_space, '(4A)' )                          &
                 "jedi_setup_field_meta_data_mod::get_field_info:: ", &

@@ -140,7 +140,7 @@ module gungho_init_fields_mod
   use section_choice_config_mod,          only : aerosol, aerosol_um
   use dust_transform_kernel_mod,          only: dust_transform_kernel_type
 #endif
-  use nl_physics_config_mod,              only : use_nl_physics
+  use nl_physics_config_mod,              only : use_nl_physics, iau_outerloop
 
   implicit none
 
@@ -1109,20 +1109,20 @@ endif! (use_nl_physics) then
       end if
     end if
 
-    if ( iau ) then
+#ifdef UM_PHYSICS
+if (use_nl_physics) then
+    if (( iau ) .and. ( .not. iau_outerloop )) then
       call log_event( 'IAU: read file in initialise', LOG_LEVEL_INFO )
       field_collection_ptr => modeldb%fields%get_field_collection("iau_fields")
       call read_state( field_collection_ptr )
-#ifdef UM_PHYSICS
-if (use_nl_physics) then
       if ( iau_use_pertinc ) then
         call log_event( 'IAU: read pertinc file in initialise', LOG_LEVEL_INFO )
         field_collection_ptr => modeldb%fields%get_field_collection("iau_pert_fields")
         call read_state( field_collection_ptr )
       end if
+    end if
 endif! (use_nl_physics) then
 #endif
-    end if
 
     if ( iau_surf ) then
       call log_event( 'IAU: read surf inc file in initialise', LOG_LEVEL_INFO )
