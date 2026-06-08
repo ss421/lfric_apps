@@ -11,7 +11,7 @@
 
 $(info UM physics specific compile options)
 
-include $(LFRIC_ATM_DIR)/build/fortran/$(FORTRAN_COMPILER).mk
+include $(PROJECT_DIR)/build/fortran/$(FORTRAN_COMPILER).mk
 
 casim/%.o: private FFLAGS_EXTRA = $(FFLAGS_UM_PHYSICS)
 ukca/%.o: private FFLAGS_EXTRA = $(FFLAGS_UM_PHYSICS)
