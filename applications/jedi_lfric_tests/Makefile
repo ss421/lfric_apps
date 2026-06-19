@@ -20,6 +20,10 @@ export PSYCLONE_TRANSFORMATION ?= minimum
 
 export PROJECT_DIR := $(realpath $(dir $(lastword $(MAKEFILE_LIST))))
 
+export EXTRA_ROSE_META = jules
+export META_DIR = $(WORKING_DIR)/../rose-meta
+export ROSE_META_DIRS = $(APPS_ROOT_DIR)/rose-meta $(META_DIR)
+
 # Note - socrates_interface must come before jules_interface as there are dependencies on each other.
 export INTERNAL_DEPENDENCIES = $(CORE_ROOT_DIR)/infrastructure \
                                $(CORE_ROOT_DIR)/components/driver \
@@ -54,6 +58,7 @@ default: build
 documentation doc docs: document-uml document-latex document-api
 	$(Q)echo > /dev/null
 
+include $(APPS_ROOT_DIR)/build/extract/extract_meta.mk
 include $(CORE_ROOT_DIR)/infrastructure/build/lfric.mk
 include $(INTERNAL_DEPENDENCIES:=/build/import.mk)
 -include $(PROJECT_DIR)/build/project.mk
@@ -147,6 +152,10 @@ build: ALWAYS
 	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/extract.mk \
 	          SOURCE_DIR=source \
 	          WORKING_DIR=$(WORKING_DIR)
+	$(call MESSAGE,========================================)
+	$(call MESSAGE,Extracting External Rose Metadata)
+	$(call MESSAGE,========================================)
+	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/build/extract/extract_meta.mk
 	$(call MESSAGE,=========================================================)
 	$(call MESSAGE,Generating $(PROJECT) namelist loaders)
 	$(call MESSAGE,=========================================================)
@@ -183,16 +192,16 @@ build: ALWAYS
 	$(call MESSAGE,========================================)
 	$(call MESSAGE,Preprocess and PSyclone Transmute)
 	$(call MESSAGE,========================================)
-	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/interfaces/physics_schemes_interface/build/pre_process_phys.mk \
+	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/interfaces/build/pre_process_phys.mk \
               SOURCE_DIR=$(WORKING_DIR) \
               PSYCLONE_PHYSICS_FILES="$(PSYCLONE_PHYSICS_FILES)" \
 	          PSYCLONE_DIRECTORIES="$(PSYCLONE_DIRECTORIES)" \
 	          PSYCLONE_PHYSICS_EXCEPTION="$(PSYCLONE_PHYSICS_EXCEPTION)"
-	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/interfaces/physics_schemes_interface/build/psyclone_transmute_pass.mk \
+	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/interfaces/build/psyclone_transmute_pass.mk \
 	          SOURCE_DIR=$(WORKING_DIR) \
 	          OPTIMISATION_PATH_PSY=$(APPS_ROOT_DIR)/applications/$(PROJECT)/$(OPTIMISATION_PATH) \
 	          PSYCLONE_PASS_NO_SCRIPT="$(PSYCLONE_PASS_NO_SCRIPT)"
-	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/interfaces/physics_schemes_interface/build/psyclone_transmute.mk \
+	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/interfaces/build/psyclone_transmute.mk \
 	          SOURCE_DIR=$(WORKING_DIR) \
 	          OPTIMISATION_PATH_PSY=$(APPS_ROOT_DIR)/applications/$(PROJECT)/$(OPTIMISATION_PATH) \
 	          PSYCLONE_PHYSICS_FILES="$(PSYCLONE_PHYSICS_FILES)" \
@@ -237,8 +246,8 @@ unit-tests/%: export PROJECT = $(PROJECT_NAME)
 unit-tests/%: export SOURCE_DIR = source
 unit-tests/%: export TEST_DIR = unit-test
 unit-tests/%: export WORKING_DIR := $(WORKING_DIR)/unit-test
-unit-tests: unit-tests/run
-
+unit-tests: extract_meta unit-tests/run
+unit-tests/build: extract_meta unit-tests/build
 
 ##############################################################################
 # Integration tests

@@ -43,6 +43,9 @@ export IGNORE_DEPENDENCIES = c_shum_byteswap \
                              f_shum_is_inf_mod \
                              f_shum_is_denormal_mod
 
+export EXTRA_ROSE_META = jules
+export META_DIR = $(WORKING_DIR)/../rose-meta
+export ROSE_META_DIRS = $(APPS_ROOT_DIR)/rose-meta $(META_DIR)
 
 # The physics components are extracted and built, even though they are not
 # actually used by the linear_model app. This is to ensure that the code runs
@@ -62,7 +65,7 @@ export INTERNAL_DEPENDENCIES = $(CORE_ROOT_DIR)/infrastructure \
 META_VN             ?= HEAD
 export META_FILE_DIR = $(PROJECT_DIR)/rose-meta/lfric-$(PROJECT_NAME)/$(META_VN)
 
-# Check PSyclone transformation option (from lfric_atm) is valid
+# Check PSyclone transformation option is valid
 ifneq ("$(PSYCLONE_TRANSFORMATION)","none")
   export OPTIMISATION_PATH ?= $(wildcard $(LFRIC_ATM_DIR)/optimisation/$(PSYCLONE_TRANSFORMATION))
   ifeq ("$(wildcard $(OPTIMISATION_PATH)/psykal/global.py)","")
@@ -76,11 +79,11 @@ default: build
 
 include $(CORE_ROOT_DIR)/infrastructure/build/lfric.mk
 include $(INTERNAL_DEPENDENCIES:=/build/import.mk)
-include $(LFRIC_ATM_DIR)/build/project.mk
+include build/project.mk
 
 # Include transmute list only if not using minimum or no transformations
 ifeq ($(filter "$(PSYCLONE_TRANSFORMATION)", "none" "minimum"),)
-  include $(LFRIC_ATM_DIR)/build/psyclone_transmute_file_list.mk
+  include build/psyclone_transmute_file_list.mk
 endif
 
 ##############################################################################
@@ -136,6 +139,10 @@ build: ALWAYS
 	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/extract.mk \
 	          SOURCE_DIR=source
 	$(call MESSAGE,========================================)
+	$(call MESSAGE,Extracting External Rose Metadata)
+	$(call MESSAGE,========================================)
+	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/build/extract/extract_meta.mk
+	$(call MESSAGE,========================================)
 	$(call MESSAGE,Generating $(PROJECT) namelist loaders)
 	$(call MESSAGE,========================================)
 	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/configuration.mk \
@@ -145,50 +152,43 @@ build: ALWAYS
 	$(call MESSAGE,PSycloning interface components)
 	$(call MESSAGE,========================================)
 	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/psyclone/psyclone_psykal.mk \
-	          SOURCE_DIR=$(APPS_ROOT_DIR)/interfaces/coupled_interface/source \
-                  OPTIMISATION_PATH=$(OPTIMISATION_PATH)
+	          SOURCE_DIR=$(APPS_ROOT_DIR)/interfaces/coupled_interface/source
 	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/psyclone/psyclone_psykal.mk \
-	          SOURCE_DIR=$(APPS_ROOT_DIR)/interfaces/jules_interface/source \
-                  OPTIMISATION_PATH=$(OPTIMISATION_PATH)
+	          SOURCE_DIR=$(APPS_ROOT_DIR)/interfaces/jules_interface/source
 	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/psyclone/psyclone_psykal.mk \
-	          SOURCE_DIR=$(APPS_ROOT_DIR)/interfaces/socrates_interface/source \
-                  OPTIMISATION_PATH=$(OPTIMISATION_PATH)
+	          SOURCE_DIR=$(APPS_ROOT_DIR)/interfaces/socrates_interface/source
 	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/psyclone/psyclone_psykal.mk \
-	          SOURCE_DIR=$(APPS_ROOT_DIR)/interfaces/physics_schemes_interface/source \
-                  OPTIMISATION_PATH=$(OPTIMISATION_PATH)
+	          SOURCE_DIR=$(APPS_ROOT_DIR)/interfaces/physics_schemes_interface/source
 	$(call MESSAGE,========================================)
 	$(call MESSAGE,PSycloning Gungho dynamical core)
 	$(call MESSAGE,========================================)
 	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/psyclone/psyclone_psykal.mk \
-	          SOURCE_DIR=$(APPS_ROOT_DIR)/science/gungho/source \
-                  OPTIMISATION_PATH=$(OPTIMISATION_PATH)
+	          SOURCE_DIR=$(APPS_ROOT_DIR)/science/gungho/source
 	$(call MESSAGE,========================================)
 	$(call MESSAGE,PSycloning Linear)
 	$(call MESSAGE,========================================)
 	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/psyclone/psyclone_psykal.mk \
-	          SOURCE_DIR=$(APPS_ROOT_DIR)/science/linear/source \
-                  OPTIMISATION_PATH=$(OPTIMISATION_PATH)
+	          SOURCE_DIR=$(APPS_ROOT_DIR)/science/linear/source
 	$(call MESSAGE,========================================)
 	$(call MESSAGE,PSycloning $(PROJECT_NAME))
 	$(call MESSAGE,========================================)
 	$Q$(MAKE) $(QUIET_ARG) -f $(LFRIC_BUILD)/psyclone/psyclone_psykal.mk \
-	          SOURCE_DIR=source \
-                  OPTIMISATION_PATH=$(OPTIMISATION_PATH)
+	          SOURCE_DIR=source
 	$(call MESSAGE,========================================)
-	$(call MESSAGE,Preprocess and PSyclone Transmute 1 )
+	$(call MESSAGE,Preprocess and PSyclone Transmute)
 	$(call MESSAGE,========================================)
 # Note depending on site target requirements, either all source or specific source will be affected
 # See application overrides and files exported there
-	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/interfaces/physics_schemes_interface/build/pre_process_phys.mk \
+	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/interfaces/build/pre_process_phys.mk \
               SOURCE_DIR=$(WORKING_DIR) \
               PSYCLONE_PHYSICS_FILES="$(PSYCLONE_PHYSICS_FILES)" \
 	          PSYCLONE_DIRECTORIES="$(PSYCLONE_DIRECTORIES)" \
 	          PSYCLONE_PHYSICS_EXCEPTION="$(PSYCLONE_PHYSICS_EXCEPTION)"
-	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/interfaces/physics_schemes_interface/build/psyclone_transmute_pass.mk \
+	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/interfaces/build/psyclone_transmute_pass.mk \
 	          SOURCE_DIR=$(WORKING_DIR) \
 	          OPTIMISATION_PATH_PSY=$(OPTIMISATION_PATH) \
 	          PSYCLONE_PASS_NO_SCRIPT="$(PSYCLONE_PASS_NO_SCRIPT)"
-	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/interfaces/physics_schemes_interface/build/psyclone_transmute.mk \
+	$Q$(MAKE) $(QUIET_ARG) -f $(APPS_ROOT_DIR)/interfaces/build/psyclone_transmute.mk \
 	          SOURCE_DIR=$(WORKING_DIR) \
 	          OPTIMISATION_PATH_PSY=$(OPTIMISATION_PATH) \
 	          PSYCLONE_PHYSICS_FILES="$(PSYCLONE_PHYSICS_FILES)" \
