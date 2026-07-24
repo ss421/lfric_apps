@@ -93,6 +93,9 @@ contains
   !> Return the curent time
   procedure, public :: valid_time
 
+  !> Add increment fields to the state
+  procedure, public :: add_increment
+
   !> Read model fields from file into fields
   procedure, public :: read_file
 
@@ -266,6 +269,152 @@ function valid_time( self ) result(time)
   time = self%state_time
 
 end function valid_time
+
+!> @brief      Add increment to state
+!>
+!> @param [in] increment The increment to add to the state
+subroutine add_increment( self, increment )
+
+  use jedi_increment_mod,      only: jedi_increment_type
+  use jedi_lfric_utils_mod,    only: get_model_field
+  use field_mod,               only: field_type
+  use log_field_alg_mod,       only: log_field_alg
+  use log_mod,                 only: log_event, LOG_LEVEL_DEBUG, LOG_LEVEL_INFO
+  use update_iau_inc_alg_mod,  only: update_iau_alg
+  use iau_config_mod,          only : iau_outerloop
+
+  use printing_iau_mod,                 only : print_minmax_prog,        &
+                                               print_meanrms_prog,       &
+                                               print_minmax_iau,         &
+                                               print_meanrms_iau
+
+
+  implicit none
+
+  class( jedi_state_type ),  intent(inout) :: self
+  type( jedi_increment_type ),  intent(inout) :: increment!! should be in?
+
+  ! Local:
+  type( atlas_field_interface_type ), allocatable :: fields_to_modeldb(:)
+  integer(i_def)                                  :: ivar
+  integer(i_def)                                  :: n_variables
+  type(field_type),                       pointer :: lfric_field_ptr
+  real(real64),                           pointer :: atlas_data_ptr(:,:)
+  integer(i_def),                         pointer :: horizontal_map_ptr(:)
+  type( field_collection_type ),          pointer :: iau_fields
+
+  nullify(lfric_field_ptr, atlas_data_ptr, horizontal_map_ptr, iau_fields)
+
+  !!-- Note: only adding to the modelDB at the moment
+  !
+  ! The inc variables are: (VAR: rho_r2 - get JADA config..?)
+  !   variables='theta','exner','rho_r2','u_in_w3','v_in_w3','q','qcl','qcf'
+  !
+  ! Try to include prognostic state variables:
+  !   variables='theta','exner','rho',   'u_in_w3','v_in_w3','m_v','m_cl','m_r', 'm_s'
+  !
+  ! will need to add wind transform to copy wind back to horizontal winds: 
+  !   from_modeldb doesn’t have wind transform included here yet.
+
+  if (self%modeldb%fields%field_collection_exists("iau_fields")) then
+    call log_event( "iau_fields exists: adding inc now...", LOG_LEVEL_INFO )
+  else
+    ! we dont have the IAU fields - what should be done here?"
+    call log_event( "iau_fields do not exists: return...", LOG_LEVEL_INFO )
+    return
+  endif
+
+  ! "iau_fields" should have been removed so it should not get here.... Ive think the remove_collection
+  !   just empties the collection and does not remove the collection
+  iau_fields => self%modeldb%fields%get_field_collection("iau_fields")
+
+  ! Get the number of variables
+  n_variables = increment%field_meta_data%get_n_variables()
+
+  ! Log iau_fields where read via IAU and return as nothing to do - it was already done...
+  ! curently set by rose-app-da only so will need a variant of this
+  ! this is for testing... so can compare reading via JEDI and via the IAU context
+  if (.not.iau_outerloop) then
+    call log_event( 'ASTATE: Minmax and mean/rms IAU increment fields -', log_level_info )
+    call print_minmax_iau( iau_fields, log_level_info )
+    call log_event( 'ASTATE: AFTER Minmax and mean/rms IAU increment fields -', log_level_info )
+    call log_event( "read via IAU: iau_fields: ", LOG_LEVEL_INFO )
+    do ivar=1, n_variables
+      !! There is a method now: call iau_fields % get_field( 'rho_inc', iau_field )
+      !!
+      !! so I could do: call iau_fields % get_field( trim(increment%field_meta_data%get_variable_name(ivar))//"_inc", &
+      !!                                             lfric_field_ptr )
+
+      call get_model_field( trim(increment%field_meta_data%get_variable_name(ivar))//"_inc", &
+                            iau_fields, lfric_field_ptr )
+      ! Log field info - after data has been copied - for testing purposes
+      call log_field_alg(lfric_field_ptr, LOG_LEVEL_INFO)
+    enddo
+    return
+  endif
+
+  ! Setup the interface fields to enable Atlas-LFRic copies
+  allocate( fields_to_modeldb( n_variables ) )
+
+  ! Link the Atlas emulator fields with LFRic fields
+  call increment%geometry%get_horizontal_map(horizontal_map_ptr)
+  ! We should check the inc and state are the same size I think...
+  call log_event( "iau_fields before: ", LOG_LEVEL_INFO )
+  ! loop over the Atlas fields - this works but maybe we should
+  ! iteratate over all fields in iau_fields
+  do ivar=1, n_variables
+    ! Get the required data while post_pending "_inc"? not sure trim is needed....
+    call get_model_field( trim(increment%field_meta_data%get_variable_name(ivar))//"_inc", &
+                          iau_fields, lfric_field_ptr )
+
+    atlas_data_ptr => increment%fields(ivar)%get_data()
+
+    call fields_to_modeldb(ivar)%initialise( atlas_data_ptr,     &
+                                             horizontal_map_ptr, &
+                                             lfric_field_ptr )
+  end do
+
+  ! Copy from the Atlas emulator fields to the modelDB IAU fields
+  do ivar = 1, n_variables
+    call fields_to_modeldb(ivar)%copy_to_lfric()   
+  end do
+
+  call log_event( "read via JEDI: iau_fields: ", LOG_LEVEL_INFO )
+  do ivar=1, n_variables
+    call get_model_field( trim(increment%field_meta_data%get_variable_name(ivar))//"_inc", &
+                          iau_fields, lfric_field_ptr )
+    ! Log field info - after data has been copied - for testing purposes
+    call log_field_alg(lfric_field_ptr, LOG_LEVEL_INFO)
+  enddo
+
+  call log_event( 'BSTATE: Minmax and mean/rms IAU increment fields -', log_level_info )
+  call print_minmax_iau( iau_fields, log_level_info )
+  call log_event( 'BSTATE: AFTER Minmax and mean/rms IAU increment fields -', log_level_info )
+  !-- Apply the increment in the modelDB via IAU
+  ! The mesh should be consistent, could check as noted that the two 
+  ! geoms are consistent - maybe that could be done via meshname?
+  ! This is what the curent IAU code does:
+  !    mesh => mesh_collection%get_mesh(prime_mesh_name)
+  !    twod_mesh => mesh_collection%get_mesh(mesh, TWOD)
+  ! Can access it via geom: increment%geometry%get_twod_mesh()
+  call update_iau_alg( self%modeldb,                       &
+                       increment%geometry%get_twod_mesh(), &
+                       iau_ainc_active = .true.,           &
+                       iau_addinf_active = .false.,        &
+                       iau_bcorr_active = .false.,         &
+                       iau_pertinc_active = .false. )
+
+  ! The oreder maters. I think update_iau_alg changes rho_r2_inc and thats why I see 
+  !   diffs when compareing IAU read options.
+
+  call log_event( 'CSTATE: Minmax and mean/rms IAU increment fields -', log_level_info )
+  call print_minmax_iau( iau_fields, log_level_info )
+  call log_event( 'CSTATE: AFTER Minmax and mean/rms IAU increment fields -', log_level_info )
+
+  ! Copy from modeldb after IAU is applied (winds not yet applied yet)
+  call self%from_modeldb()
+
+end subroutine add_increment
 
 !> @brief    A method to update the internal Atlas field emulators
 !>

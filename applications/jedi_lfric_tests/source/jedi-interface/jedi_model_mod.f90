@@ -96,11 +96,22 @@ end subroutine model_init
 subroutine model_step(self, state)
 
   use jedi_lfric_nl_modeldb_driver_mod, only : step_nl
+  use lfric_xios_context_mod , only: lfric_xios_context_type
 
   implicit none
 
   class( jedi_model_type ), target, intent(inout) :: self
   type( jedi_state_type ),          intent(inout) :: state
+
+  type(lfric_xios_context_type), pointer :: io_context
+
+  ! Set context back to main context:
+  !   Required because I change it elsewhere and do not change it back.
+  !   Should/could we change the context back to the main context when it is switched elsewhere?
+  !   Should/could "gungho_atm" be available in modeldb?
+  ! I can add the context_name to state and make initialise_modeldb pass as arg
+  call state%modeldb%io_contexts%get_io_context("gungho_atm", io_context)
+  call io_context%set_current()
 
   ! step gungho
   call step_nl( state%modeldb )

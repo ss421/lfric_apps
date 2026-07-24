@@ -302,7 +302,8 @@ contains
       ! IAU increment fields can now be cleared from the depository unless this
       ! is a DA outer loop application
       if ( .not. iau_outerloop ) then
-        call remove_field_collection( modeldb, "iau_fields" )
+        ! TEMP: comment out for testing
+        !call remove_field_collection( modeldb, "iau_fields" )
       end if
 
     end if

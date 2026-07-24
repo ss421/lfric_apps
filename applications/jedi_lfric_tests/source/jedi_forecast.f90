@@ -34,6 +34,7 @@ program jedi_forecast
   use jedi_state_mod,                only : jedi_state_type
   use jedi_model_mod,                only : jedi_model_type
   use jedi_post_processor_empty_mod, only : jedi_post_processor_empty_type
+  use jedi_increment_mod,            only : jedi_increment_type
 
   implicit none
 
@@ -43,6 +44,7 @@ program jedi_forecast
   type( jedi_model_type )                :: jedi_model
   type( jedi_run_type )                  :: jedi_run
   type( jedi_post_processor_empty_type ) :: jedi_pp_empty
+  type( jedi_increment_type )            :: jedi_increment
 
   ! Local
 
@@ -87,6 +89,11 @@ program jedi_forecast
   ! Create state (requires the configuration file name to setup the modeldb)
   call jedi_state%initialise( jedi_geometry, config, filename )
 
+  ! Create increment and read the fields from file - this is the anal_inc
+  call jedi_increment%initialise( jedi_geometry, config )
+
+  call jedi_state%add_increment( jedi_increment )
+
   ! Create non-linear model
   call jedi_model%initialise( config )
 
@@ -95,6 +102,7 @@ program jedi_forecast
 
   ! Print the final state diagnostics
   call jedi_state%print()
+  call jedi_increment%print()
 
   ! To provide KGO
   depository => jedi_state%modeldb%fields%get_field_collection("depository")

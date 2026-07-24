@@ -40,10 +40,10 @@ type, public :: jedi_increment_type
   private
 
   !> These fields emulate a set of Atlas fields are and used purely for testing
-  type ( atlas_field_emulator_type ), allocatable :: fields(:)
+  type ( atlas_field_emulator_type ), allocatable, public :: fields(:)
 
   !> An object that stores the field meta-data associated with the fields
-  type( jedi_lfric_field_meta_type )              :: field_meta_data
+  type( jedi_lfric_field_meta_type ), public               :: field_meta_data
 
   !> Field collection to perform IO
   type( field_collection_type ), public           :: io_collection
