@@ -60,8 +60,12 @@ contains
     comm_is_split = .false.
 
 #ifdef USE_XIOS
+  write(*,*) 'init_external_comm: entered for', trim(program_name), 'world_comm=', world_comm
     ! Initialise XIOS and get back the split communicator
+  write(*,*) 'init_external_comm: calling lfric_xios_initialise for', trim(program_name), 'world_comm=', world_comm
     call lfric_xios_initialise( program_name, lfric_comm, comm_is_split )
+  write(*,*) 'init_external_comm: returned from lfric_xios_initialise, comm_is_split=', comm_is_split, &
+         ' mpi_comm=', lfric_comm%get_comm_mpi_val()
     ! Convert the LFRic communicator back to an mpi communicator
     output_comm = lfric_comm%get_comm_mpi_val()
     comm_is_split = .true.
