@@ -103,7 +103,10 @@ contains
 
     implicit none
 
+    write(*,*) 'final_external_comm: >> 1'
+
 #ifdef USE_XIOS
+    write(*,*) 'final_external_comm: >> 2'
     ! XIOS context finalization is already done by lfricjedi_xios_data_bundle%finalise()
     ! which calls finalise_xios_context() on each context with proper current-setting and sync.
     ! Skip redundant context finalization here to avoid double-finalize issues.
@@ -111,7 +114,10 @@ contains
     
     ! Still need to finalize the XIOS library itself so server-side ranks can exit cleanly
     call lfric_xios_finalise()
+    write(*,*) 'final_external_comm: >> 3'
 #endif
+
+  write(*,*) 'final_external_comm: >> 4'
 
   end subroutine final_external_comm
 
